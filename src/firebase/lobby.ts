@@ -7,6 +7,7 @@ import {
   playerPath,
   rosterEntryPath,
   rosterPath,
+  storytellerPath,
   storytellerUidPath,
 } from "./paths";
 import type { PlayerId, PlayerSelfRecord } from "@/stores/types";
@@ -137,21 +138,27 @@ export async function readOwnRosterEntry(
 // ---------------------------------------------------------------------------
 
 /**
- * ST-side: mark a lobby as ended. Writes `status = "ended"` and
- * `endedAt = Date.now()` atomically. Players subscribed to the status path
- * will be notified immediately and shown the "Game ended" screen.
+ * ST-side: mark a lobby as ended and scrub private data.
+ * Writes `status = "ended"` first so players redirect immediately, then
+ * fire-and-forgets a best-effort multi-path null to clear `storyteller/`
+ * and each `player/{id}` (private data). `roster/` and `public/` are left
+ * intact — players need roster membership to read `public/` (see rules.json).
  */
 export async function endLobby(
   backend: RoomBackend,
-  code: string
+  code: string,
+  playerIds?: PlayerId[]
 ): Promise<void> {
-  // Write status="ended" to lobbies/${code}/public/status.
-  // This path is covered by the already-deployed `public` rule:
-  //   - ST write: ✓ (root.child(...storytellerUid) === auth.uid)
-  //   - Player read: ✓ (roster member read on public/ cascades to children)
-  // Using set() on a specific ref avoids a multi-path root update, which
-  // would fail if any path in the batch has no deployed rule.
   await backend.set(lobbyStatusPath(code), "ended");
+  // Best-effort scrub — null values delete nodes in RTDB multi-path updates.
+  const cleanups: Record<string, Json> = { [storytellerPath(code)]: null };
+  for (const pid of playerIds ?? []) {
+    cleanups[playerPath(code, pid)] = null;
+  }
+  backend.update(cleanups).catch((e) => {
+    // eslint-disable-next-line no-console
+    console.warn("[endLobby cleanup]", e instanceof Error ? e.message : e);
+  });
 }
 
 /**

@@ -104,17 +104,25 @@ export const PlayerPublicRecordSchema = z.object({
   publicDisplayRole: z.string().min(1).optional(),
 });
 
+export const NightStepStatusSchema = z.enum(["pending", "done", "skipped"]);
+
+export const NightStepRecordSchema = z.object({
+  status: NightStepStatusSchema,
+  notes: z.string(),
+});
+
 export const StorytellerLobbyRecordSchema = z.object({
   code: z.string().min(1),
   storytellerUid: z.string().min(1),
   scriptId: z.string().min(1),
   phase: z.enum(["setup", "night", "day", "ended"]),
   day: z.number().int().nonnegative(),
-  bluffs: z.array(z.string().min(1)),
-  fabled: z.array(z.string().min(1)),
+  bluffs: z.array(z.string().min(1)).default([]),
+  fabled: z.array(z.string().min(1)).default([]),
   notes: z.string(),
   players: z.record(z.string().min(1), STPlayerRecordSchema),
   seatOrder: z.array(z.string().min(1)),
+  nightProgress: z.record(z.string().min(1), NightStepRecordSchema).default({}),
 });
 
 export const PublicLobbyRecordSchema = z.object({
@@ -126,4 +134,32 @@ export const PublicLobbyRecordSchema = z.object({
   players: z.record(z.string().min(1), PlayerPublicRecordSchema),
   fabled: z.array(z.string().min(1)),
   winner: AlignmentSchema.optional(),
+});
+
+// Looser variants for validating persisted (localStorage) state.
+// actualRole may be "" for un-assigned / traveler players.
+// code may be "" for offline (no-Firebase) games.
+const STPlayerRecordPersistedSchema = STPlayerRecordSchema.extend({
+  actualRole: z.string(),
+});
+
+const StorytellerGamePersistedSchema = StorytellerLobbyRecordSchema.extend({
+  code: z.string(),
+  storytellerUid: z.string(),
+  players: z.record(z.string(), STPlayerRecordPersistedSchema),
+});
+
+export const StorytellerStateSchema = z.object({
+  game: StorytellerGamePersistedSchema.nullable().optional(),
+  view: z.enum(["home", "game"]).optional(),
+  undoStack: z.array(StorytellerGamePersistedSchema).optional(),
+  customScripts: z.record(z.string(), ScriptSchema).optional(),
+  lobby: z
+    .object({
+      code: z.string().min(1),
+      uid: z.string().min(1),
+      status: z.enum(["live", "reconnecting"]),
+    })
+    .nullable()
+    .optional(),
 });

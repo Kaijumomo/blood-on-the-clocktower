@@ -196,6 +196,20 @@ describe("watchRoster", () => {
     const last = seen[seen.length - 1];
     expect(last?.["uid-bob"]).toBe("p-1");
   });
+
+  it("unsubscribed listener stops firing — no leak after off() is called", async () => {
+    const b = new MemoryRoomBackend();
+    let fires = 0;
+    const off = watchRoster(b, "ABCD", () => fires++);
+    // One immediate fire on subscribe (null — roster empty).
+    expect(fires).toBe(1);
+    off();
+    // Write after unsubscribe must not trigger the callback.
+    await knockOnLobby(b, "ABCD", "uid-bob", "Bob");
+    expect(fires).toBe(1);
+    // subscribePaths records the subscription was made (proof the path was wired).
+    expect(b.subscribePaths).toContain("lobbies/ABCD/roster");
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -212,12 +226,24 @@ describe("endLobby", () => {
     expect(await b.get("lobbies/ABCD/public/status")).toBe("ended");
   });
 
-  it("is a single set() — exactly one write log entry", async () => {
+  it("writes status=ended first, then nulls storyteller/ as cleanup", async () => {
     const b = new MemoryRoomBackend();
     await endLobby(b, "ABCD");
-    expect(b.writeLog).toHaveLength(1);
+    // First write must be the status signal so players redirect immediately.
     expect(b.writeLog[0]!.path).toBe("lobbies/ABCD/public/status");
     expect(b.writeLog[0]!.value).toBe("ended");
+    // Storyteller private data is nulled in the cleanup update.
+    expect(b.writeLog.some((e) => e.path === "lobbies/ABCD/storyteller" && e.value === null)).toBe(true);
+    // roster/ and public/ are NOT written (would break roster-gated public read).
+    expect(b.writeLog.every((e) => !e.path.startsWith("lobbies/ABCD/roster"))).toBe(true);
+    expect(b.writeLog.filter((e) => e.path === "lobbies/ABCD/public/status").length).toBe(1);
+  });
+
+  it("nulls each player/{id} path when playerIds are provided", async () => {
+    const b = new MemoryRoomBackend();
+    await endLobby(b, "ABCD", ["p1", "p2"]);
+    expect(b.writeLog.some((e) => e.path === "lobbies/ABCD/player/p1" && e.value === null)).toBe(true);
+    expect(b.writeLog.some((e) => e.path === "lobbies/ABCD/player/p2" && e.value === null)).toBe(true);
   });
 });
 

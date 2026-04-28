@@ -116,6 +116,24 @@ The 4-character random code from `[BCDFGHJKLMNPQRSTVWXYZ23456789]` (no
 ambiguous-glyph chars) gives ~16M codes. Realistic collision rate at this
 scale is negligible, but the transaction is the seatbelt.
 
+## Lobby TTL — there is none
+
+Firebase Realtime Database has no built-in TTL mechanism for arbitrary paths.
+Lobbies are not automatically deleted after they end.
+
+**What we do:** When the ST calls `endLobby`, we:
+1. Write `public/status = "ended"` (immediate signal — players redirect).
+2. Null `storyteller/` and `player/{id}/` paths (scrub private data, best-effort).
+
+**What we do NOT do:** Delete `public/`, `roster/`, or `lobbies/{code}` itself.
+Players need a roster entry to read `public/` (rules gate), so leaving roster
+intact is correct. The top-level lobby node (and public/) can linger
+indefinitely without creating a privacy or cost problem at typical usage scales.
+
+**Future option:** A Cloud Function with a daily cleanup sweep could delete
+ended lobbies older than N hours using a timestamp field. Not implemented —
+the added complexity isn't justified until lobby volume becomes a concern.
+
 ## The privacy chokepoint
 
 All writes outside `storyteller/` go through `writeProjections` in

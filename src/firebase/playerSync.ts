@@ -32,7 +32,7 @@ export async function joinLobby(
     player.setStatus("waiting");
   } catch (e) {
     // eslint-disable-next-line no-console
-    console.error("[joinLobby]", e);
+    console.error("[joinLobby]", e instanceof Error ? e.message : e);
     const friendly = friendlyFirebaseError(e, "player");
     player.setStatus("error", `${friendly.title}: ${friendly.message}`);
   }
@@ -76,19 +76,30 @@ export function usePlayerSync(backend: RoomBackend | null) {
   }, [backend, code, uid]);
 
   // Subscribe to own player/{playerId} once seated.
+  // A permission probe runs first so that a stale reconnect (e.g. the game
+  // ended and the player's session is no longer valid) surfaces a clear error
+  // instead of hanging silently.
   useEffect(() => {
     if (!backend || !code || !playerId) return;
-    const unsub = backend.subscribe(playerPath(code, playerId), (value) => {
-      const ps = usePlayerStore.getState();
-      // Guard: don't update self record after the lobby has ended.
-      if (ps.status === "ended") return;
-      if (value === undefined || value === null) {
-        ps.setSelf(null);
-        return;
-      }
-      ps.setSelf(value as unknown as PlayerSelfRecord);
+    let active = true;
+    let cleanup: (() => void) | null = null;
+    backend.get(playerPath(code, playerId)).then(() => {
+      if (!active) return;
+      cleanup = backend.subscribe(playerPath(code, playerId), (value) => {
+        const ps = usePlayerStore.getState();
+        if (ps.status === "ended") return;
+        if (value === undefined || value === null) {
+          ps.setSelf(null);
+          return;
+        }
+        ps.setSelf(value as unknown as PlayerSelfRecord);
+      });
+    }).catch((e) => {
+      if (!active) return;
+      const friendly = friendlyFirebaseError(e, "player");
+      usePlayerStore.getState().setStatus("error", `${friendly.title}: ${friendly.message}`);
     });
-    return () => unsub();
+    return () => { active = false; cleanup?.(); };
   }, [backend, code, playerId]);
 
   // Subscribe to public/ — and detect lobby-ended from within the same
@@ -96,22 +107,31 @@ export function usePlayerSync(backend: RoomBackend | null) {
   // this fires immediately on the next subscription tick. One subscription
   // handles both normal updates and the game-ended signal, so there is no
   // separate read on lobbies/${code}/status (which would need its own rule).
+  // Permission probe guards against reconnecting to an already-ended lobby.
   useEffect(() => {
     if (!backend || !code) return;
-    const unsub = backend.subscribe(publicPath(code), (value) => {
-      const ps = usePlayerStore.getState();
-      if (value === undefined || value === null) {
-        ps.setPublic(null);
-        return;
-      }
-      const pub = value as unknown as PublicLobbyRecord;
-      if (pub.status === "ended") {
-        // Lobby is over — clear session so localStorage is clean, show ended UI.
-        ps.setEnded();
-        return;
-      }
-      ps.setPublic(pub);
+    let active = true;
+    let cleanup: (() => void) | null = null;
+    backend.get(publicPath(code)).then(() => {
+      if (!active) return;
+      cleanup = backend.subscribe(publicPath(code), (value) => {
+        const ps = usePlayerStore.getState();
+        if (value === undefined || value === null) {
+          ps.setPublic(null);
+          return;
+        }
+        const pub = value as unknown as PublicLobbyRecord;
+        if (pub.status === "ended") {
+          ps.setEnded();
+          return;
+        }
+        ps.setPublic(pub);
+      });
+    }).catch((e) => {
+      if (!active) return;
+      const friendly = friendlyFirebaseError(e, "player");
+      usePlayerStore.getState().setStatus("error", `${friendly.title}: ${friendly.message}`);
     });
-    return () => unsub();
+    return () => { active = false; cleanup?.(); };
   }, [backend, code]);
 }

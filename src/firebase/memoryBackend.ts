@@ -56,11 +56,14 @@ export class MemoryRoomBackend implements RoomBackend {
   private listeners: Map<string, Set<Listener>> = new Map();
   /** Records every set/update path written, in order. Available to tests. */
   public readonly writeLog: { path: string; value: Json | undefined }[] = [];
+  /** Records every path that was subscribed to. Available to tests. */
+  public readonly subscribePaths: string[] = [];
 
   reset() {
     this.root = {};
     this.listeners.clear();
     this.writeLog.length = 0;
+    this.subscribePaths.length = 0;
   }
 
   private notify(path: string) {
@@ -115,6 +118,7 @@ export class MemoryRoomBackend implements RoomBackend {
   }
 
   subscribe(path: string, cb: (value: Json | undefined) => void): Unsubscribe {
+    this.subscribePaths.push(path);
     let set = this.listeners.get(path);
     if (!set) {
       set = new Set();

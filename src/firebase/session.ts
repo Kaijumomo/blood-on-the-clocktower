@@ -49,6 +49,15 @@ export async function connectFirebase(): Promise<{ backend: RoomBackend; uid: st
   return { backend: activeBackend, uid };
 }
 
+/**
+ * Clear the cached backend and uid so the next `connectFirebase()` call
+ * creates a fresh connection (e.g. after the user saves a new Firebase config).
+ */
+export function clearActiveBackend(): void {
+  activeBackend = null;
+  activeUid = null;
+}
+
 /** Test-only: replace the active backend and uid. */
 export function __setActiveBackendForTests(
   backend: RoomBackend | null,

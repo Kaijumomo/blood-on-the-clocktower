@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildRegistry } from "@/data/roleRegistry";
 import { makeSTPlayer, tbScript } from "@/test/fixtures";
+import { TRAVELERS } from "@/data/travelers";
 import {
   projectLobbyToPublic,
   projectLobbyToSelfMap,
@@ -17,6 +18,8 @@ const PRIVATE_FIELDS = [
   "shownAlignment",
   "behaviorMode",
   "privateInfo",
+  "bluffs",       // must never appear in public/ (lives in self projection only)
+  "fakeMinions",  // must never appear in public/ (lives in self projection only)
   "statuses",
   "reminders",
   "stNotes",
@@ -167,6 +170,42 @@ describe("projectToPublic", () => {
   });
 });
 
+describe("projectToSelf — Demon bluffs privacy", () => {
+  it("real Demon's bluffs project into their own self record", () => {
+    const demon = makeSTPlayer({
+      actualRole: "imp",
+      privateInfo: { bluffs: ["chef", "saint", "washerwoman"] },
+    });
+    const self = projectToSelf(demon, registry);
+    expect(self.bluffs).toEqual(["chef", "saint", "washerwoman"]);
+  });
+
+  it("Demon's self record never contains a Lunatic's bluffs", () => {
+    const demon = makeSTPlayer({
+      actualRole: "imp",
+      privateInfo: { bluffs: ["chef", "saint", "washerwoman"] },
+    });
+    // Verify that the Lunatic's role ids do not appear in the demon's projection.
+    const demonSelf = JSON.stringify(projectToSelf(demon, registry));
+    // Lunatic's fake bluffs would be poisoner/baron/scarletwoman.
+    expect(demonSelf).not.toContain("poisoner");
+    expect(demonSelf).not.toContain("baron");
+    expect(demonSelf).not.toContain("scarletwoman");
+  });
+
+  it("projectToPublic for a Demon never contains any bluff id", () => {
+    const demon = makeSTPlayer({
+      actualRole: "imp",
+      privateInfo: { bluffs: ["chef", "saint", "washerwoman"] },
+    });
+    const pub = JSON.stringify(projectToPublic(demon, true));
+    expect(pub).not.toContain("bluffs");
+    expect(pub).not.toContain("chef");
+    expect(pub).not.toContain("saint");
+    expect(pub).not.toContain("washerwoman");
+  });
+});
+
 describe("Lobby-level projections", () => {
   function makeLobby(): StorytellerLobbyRecord {
     return {
@@ -179,6 +218,7 @@ describe("Lobby-level projections", () => {
       fabled: [],
       notes: "ST-only",
       seatOrder: ["p1", "p2", "p3"],
+      nightProgress: {},
       players: {
         p1: makeSTPlayer({
           id: "p1",
@@ -241,5 +281,207 @@ describe("Lobby-level projections", () => {
     expect(selves.p3!.shownRole).toBe("chef");
     expect(selves.p3!.shownAlignment).toBe("good");
     expect(selves.p3!.bluffs).toBeUndefined();
+  });
+
+  it("public lobby fabled array is projected into the public record", () => {
+    const lobby = makeLobby();
+    lobby.fabled = ["djinn", "doomsayer"];
+    const pub = projectLobbyToPublic(lobby, {});
+    expect(pub.fabled).toEqual(["djinn", "doomsayer"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E3: Privacy regression matrix — exhaustive behavior-mode sweep
+// ---------------------------------------------------------------------------
+
+describe("Privacy regression matrix — all behavior modes", () => {
+  // Each entry: [label, behaviorMode, actualRole, shownRole, expectedShown, expectedAlignment]
+  type Row = {
+    label: string;
+    actualRole: string;
+    shownRole: string | null;
+    shownAlignment: "good" | "evil" | null;
+    behaviorMode: "normal" | "drunk_fake_role_behavior" | "fake_demon_behavior" | "marionette_fake_good_behavior" | "poisoned" | "custom";
+    expectPublicNoRole: string; // role id that must not appear in public json
+    expectSelfRole: string;    // shownRole expected in self
+    expectSelfAlign: "good" | "evil";
+  };
+
+  const rows: Row[] = [
+    {
+      label: "normal Townsfolk (Chef)",
+      actualRole: "chef",
+      shownRole: null,
+      shownAlignment: null,
+      behaviorMode: "normal",
+      expectPublicNoRole: "chef",
+      expectSelfRole: "chef",
+      expectSelfAlign: "good",
+    },
+    {
+      label: "Drunk (shown Chef)",
+      actualRole: "drunk",
+      shownRole: "chef",
+      shownAlignment: null,
+      behaviorMode: "drunk_fake_role_behavior",
+      expectPublicNoRole: "drunk",
+      expectSelfRole: "chef",
+      expectSelfAlign: "good",
+    },
+    {
+      label: "Lunatic (shown Imp)",
+      actualRole: "lunatic",
+      shownRole: "imp",
+      shownAlignment: null,
+      behaviorMode: "fake_demon_behavior",
+      expectPublicNoRole: "lunatic",
+      expectSelfRole: "imp",
+      expectSelfAlign: "evil",
+    },
+    {
+      label: "Marionette (shown Washerwoman)",
+      actualRole: "marionette",
+      shownRole: "washerwoman",
+      shownAlignment: null,
+      behaviorMode: "marionette_fake_good_behavior",
+      expectPublicNoRole: "marionette",
+      expectSelfRole: "washerwoman",
+      expectSelfAlign: "good",
+    },
+    {
+      label: "Poisoned (still shown real role)",
+      actualRole: "chef",
+      shownRole: null,
+      shownAlignment: null,
+      behaviorMode: "poisoned",
+      expectPublicNoRole: "chef",
+      expectSelfRole: "chef",
+      expectSelfAlign: "good",
+    },
+    {
+      label: "Demon (Imp) — ST normal",
+      actualRole: "imp",
+      shownRole: null,
+      shownAlignment: null,
+      behaviorMode: "normal",
+      expectPublicNoRole: "imp",
+      expectSelfRole: "imp",
+      expectSelfAlign: "evil",
+    },
+  ];
+
+  for (const row of rows) {
+    it(`self projection: ${row.label}`, () => {
+      const p = makeSTPlayer({
+        actualRole: row.actualRole,
+        shownRole: row.shownRole,
+        shownAlignment: row.shownAlignment,
+        behaviorMode: row.behaviorMode,
+      });
+      const self = projectToSelf(p, registry);
+      expect(self.shownRole).toBe(row.expectSelfRole);
+      expect(self.shownAlignment).toBe(row.expectSelfAlign);
+      // actualRole must never appear in self projection
+      expect(JSON.stringify(self)).not.toContain(`"actualRole"`);
+      expect(JSON.stringify(self)).not.toContain(`"behaviorMode"`);
+    });
+
+    it(`public projection: ${row.label} — actual role never leaks`, () => {
+      const p = makeSTPlayer({
+        actualRole: row.actualRole,
+        shownRole: row.shownRole,
+        shownAlignment: row.shownAlignment,
+        behaviorMode: row.behaviorMode,
+        stNotes: "secret-st-note",
+        reminders: ["a-reminder"],
+        statuses: { drunk: true },
+        privateInfo: { bluffs: ["saint"] },
+      });
+      const pub = JSON.stringify(projectToPublic(p, false));
+      // Role data must not appear.
+      expect(pub).not.toContain(row.expectPublicNoRole);
+      // Private ST fields must never appear.
+      for (const f of PRIVATE_FIELDS) {
+        expect(pub, `public contained "${f}" for ${row.label}`).not.toContain(`"${f}"`);
+      }
+      expect(pub).not.toContain("secret-st-note");
+      expect(pub).not.toContain("a-reminder");
+    });
+  }
+
+  it("evil traveler (explicit shownAlignment=evil) projects correctly", () => {
+    const p = makeSTPlayer({
+      actualRole: "thief",
+      shownRole: "thief",
+      shownAlignment: "evil", // ST has marked this traveler as evil
+      behaviorMode: "normal",
+      isTraveler: true,
+    });
+    const self = projectToSelf(p, registry);
+    expect(self.shownRole).toBe("thief");
+    expect(self.shownAlignment).toBe("evil");
+    expect(JSON.stringify(self)).not.toContain("actualRole");
+    const pub = JSON.stringify(projectToPublic(p, true));
+    for (const f of PRIVATE_FIELDS) {
+      expect(pub, `public contained "${f}" for evil traveler`).not.toContain(`"${f}"`);
+    }
+    expect(pub).not.toContain("thief");
+  });
+
+  it("Demon with bluffs: public never contains any bluff role id", () => {
+    const imp = makeSTPlayer({
+      actualRole: "imp",
+      behaviorMode: "normal",
+      privateInfo: { bluffs: ["chef", "saint", "washerwoman"] },
+    });
+    const pub = JSON.stringify(projectToPublic(imp, true));
+    expect(pub).not.toContain("bluffs");
+    expect(pub).not.toContain("chef");
+    expect(pub).not.toContain("saint");
+    expect(pub).not.toContain("washerwoman");
+  });
+});
+
+describe("buildRegistry — traveler coverage", () => {
+  it("all TRAVELERS IDs are resolvable without throwing", () => {
+    const reg = buildRegistry(tbScript);
+    for (const t of TRAVELERS) {
+      expect(() => reg.alignmentOf(t.id), `traveler "${t.id}" threw`).not.toThrow();
+    }
+  });
+
+  it("alignmentOf returns 'good' for a traveler (type-based derivation)", () => {
+    const reg = buildRegistry(tbScript);
+    expect(reg.alignmentOf("thief")).toBe("good");
+    expect(reg.alignmentOf("bureaucrat")).toBe("good");
+  });
+
+  it("projectToSelf does not throw for a traveler-assigned player", () => {
+    const reg = buildRegistry(tbScript);
+    const p = makeSTPlayer({
+      actualRole: "thief",
+      shownRole: "thief",
+      isTraveler: true,
+    });
+    expect(() => projectToSelf(p, reg)).not.toThrow();
+    const self = projectToSelf(p, reg);
+    expect(self.shownRole).toBe("thief");
+    expect(self.shownAlignment).toBe("good");
+  });
+
+  it("projectToPublic for a traveler does not contain actualRole or private data", () => {
+    const p = makeSTPlayer({
+      actualRole: "thief",
+      shownRole: "thief",
+      isTraveler: true,
+      stNotes: "traveler note",
+      statuses: { protected: true },
+    });
+    const pub = JSON.stringify(projectToPublic(p, true));
+    expect(pub).not.toContain("actualRole");
+    expect(pub).not.toContain("stNotes");
+    expect(pub).not.toContain("statuses");
+    expect(pub).not.toContain("traveler note");
   });
 });

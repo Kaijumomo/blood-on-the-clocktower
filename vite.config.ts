@@ -9,4 +9,10 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    sourcemap: true,
+  },
+  esbuild: {
+    drop: process.env.NODE_ENV === "production" ? ["console", "debugger"] : [],
+  },
 });

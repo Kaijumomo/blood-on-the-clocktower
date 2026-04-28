@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useStorytellerStore, selectScriptById } from "@/stores/storytellerStore";
 import { ringRadius, seatPosition, tokenSizeForCount } from "./layout";
-import type { RoleDef, STPlayerRecord } from "@/stores/types";
+import { TRAVELERS } from "@/data/travelers";
+import type { RoleDef, Script, STPlayerRecord } from "@/stores/types";
+
+export function buildRoleDisplayMap(script: Script | undefined): Map<string, RoleDef> {
+  const map = new Map((script?.characters ?? []).map((c) => [c.id, c]));
+  for (const t of TRAVELERS) map.set(t.id, t);
+  return map;
+}
 
 const STATUS_KINDS = ["drunk", "poisoned", "protected"] as const;
 
@@ -106,10 +113,7 @@ export function GrimoireCircle() {
     return () => ro.disconnect();
   }, []);
 
-  const roleById = useMemo(
-    () => new Map((script?.characters ?? []).map((c) => [c.id, c])),
-    [script]
-  );
+  const roleById = useMemo(() => buildRoleDisplayMap(script), [script]);
 
   if (!game || !script) return null;
 

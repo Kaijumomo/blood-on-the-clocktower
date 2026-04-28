@@ -4,6 +4,7 @@ import {
   saveFirebaseConfig,
   type FirebaseAppConfig,
 } from "@/firebase/config";
+import { clearActiveBackend } from "@/firebase/session";
 
 type Props = {
   onClose: () => void;
@@ -21,6 +22,9 @@ export function FirebaseConfigDialog({ onClose, onSaved }: Props) {
     setError(null);
     try {
       saveFirebaseConfig(draft);
+      // Evict the cached backend so the next connectFirebase() creates a fresh
+      // connection using the new credentials instead of returning the stale one.
+      clearActiveBackend();
       onSaved();
       onClose();
     } catch (e) {

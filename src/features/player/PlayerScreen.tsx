@@ -61,7 +61,7 @@ export function PlayerScreen({ initialCode }: Props) {
         }
       } catch (e) {
         // eslint-disable-next-line no-console
-        console.error("[player connect]", e);
+        console.error("[player connect]", e instanceof Error ? e.message : e);
         const friendly = friendlyFirebaseError(e, "player");
         usePlayerStore
           .getState()
@@ -87,7 +87,7 @@ export function PlayerScreen({ initialCode }: Props) {
       await joinLobby(backend, joinCode.trim().toUpperCase(), uid, name);
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.error("[joinSubmit]", e);
+      console.error("[joinSubmit]", e instanceof Error ? e.message : e);
       const friendly = friendlyFirebaseError(e, "player");
       usePlayerStore
         .getState()
@@ -297,12 +297,24 @@ function SealedCard({
   revealed: boolean;
   onReveal: () => void;
 }) {
+  const [waitedLong, setWaitedLong] = useState(false);
+  useEffect(() => {
+    if (self !== null) { setWaitedLong(false); return; }
+    const t = setTimeout(() => setWaitedLong(true), 5000);
+    return () => clearTimeout(t);
+  }, [self]);
+
   if (!self) {
     return (
       <div className="sealed-card">
         <p className="behavior-help">
           The Storyteller hasn't sent your role yet.
         </p>
+        {waitedLong && (
+          <p className="behavior-help" style={{ marginTop: 8, opacity: 0.7 }}>
+            Still waiting — the Storyteller may still be setting up. Check with them directly.
+          </p>
+        )}
       </div>
     );
   }
@@ -347,14 +359,28 @@ function TownView({
   publicLobby,
   ownPlayerId,
 }: {
-  publicLobby: { players: Record<string, { id: string; name: string; seat: number; alive: boolean; ghostVote: boolean; online: boolean; isTraveler: boolean }>; seatOrder: string[] } | null;
+  publicLobby: { players: Record<string, { id: string; name: string; seat: number; alive: boolean; ghostVote: boolean; online: boolean; isTraveler: boolean }>; seatOrder: string[]; fabled?: string[] } | null;
   ownPlayerId: string | null;
 }) {
   if (!publicLobby) {
     return null;
   }
+  const activeFabled = publicLobby.fabled ?? [];
   return (
     <div className="town-view">
+      {activeFabled.length > 0 && (
+        <div className="town-fabled">
+          <span className="label">Fabled</span>
+          {activeFabled.map((id) => {
+            const r = lookupOfficialRole(id);
+            return (
+              <span key={id} className="fabled-strip-item" title={r?.ability}>
+                {r?.name ?? id}
+              </span>
+            );
+          })}
+        </div>
+      )}
       <h3 className="drawer-section-title">Town</h3>
       <ul className="town-list">
         {publicLobby.seatOrder.map((id) => {

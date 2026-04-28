@@ -248,6 +248,27 @@ describe.skipIf(!emulatorAvailable)("Firebase RTDB security rules", () => {
       st.database().ref(`lobbies/${code}/storytellerUid`).set(42 as unknown as string)
     );
   });
+
+  // -------------------------------------------------------------------- 14
+  test("non-roster device CANNOT read public/ (roster membership required)", async () => {
+    await seedLobby();
+    // Bob exists as an authenticated user but has NOT knocked — not in roster.
+    const bob = env.authenticatedContext(bobUid);
+    await assertFails(bob.database().ref(`lobbies/${code}/public`).once("value"));
+  });
+
+  // -------------------------------------------------------------------- 15
+  test("roster member CANNOT write to player/{playerId} (only ST may write)", async () => {
+    await seedLobby();
+    // Alice IS in the roster but is not the storyteller.
+    const alice = env.authenticatedContext(aliceUid);
+    await assertFails(
+      alice.database().ref(`lobbies/${code}/player/p-alice`).set({ shownRole: "imp" })
+    );
+    await assertFails(
+      alice.database().ref(`lobbies/${code}/player/p-alice`).set(null)
+    );
+  });
 });
 
 describe.skipIf(emulatorAvailable)("[rules.spec] emulator unavailable", () => {

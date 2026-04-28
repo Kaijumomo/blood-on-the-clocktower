@@ -1,4 +1,4 @@
-import type { RoleDef, STPlayerRecord, Script } from "@/stores/types";
+import type { PlayerId, RoleDef, RoleId, STPlayerRecord, Script } from "@/stores/types";
 
 export const roles: Record<string, RoleDef> = {
   chef: { id: "chef", name: "Chef", type: "townsfolk", firstNight: 30 },
@@ -34,6 +34,15 @@ export const tbScript: Script = {
     roles.marionette!,
   ],
 };
+
+export function makePlayer(
+  id: PlayerId,
+  roleId: RoleId,
+  seat: number,
+  over: Partial<STPlayerRecord> = {}
+): STPlayerRecord {
+  return makeSTPlayer({ id, name: id, seat, actualRole: roleId, ...over });
+}
 
 export function makeSTPlayer(over: Partial<STPlayerRecord> = {}): STPlayerRecord {
   return {

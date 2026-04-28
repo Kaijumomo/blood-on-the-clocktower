@@ -1,9 +1,13 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { BUILTIN_SCRIPTS, BUILTIN_SCRIPT_IDS } from "@/data/scripts";
+import { FABLED } from "@/data/fabled";
+import { StorytellerStateSchema } from "./schemas";
 import type {
   Alignment,
   BehaviorMode,
+  NightStepRecord,
+  NightStepStatus,
   PlayerId,
   RoleId,
   Script,
@@ -12,6 +16,14 @@ import type {
 } from "./types";
 
 const UNDO_LIMIT = 20;
+
+let _migrationResetFlag = false;
+/** Returns true (once) when migrate() discarded incompatible persisted state. */
+export function takeMigrationResetFlag(): boolean {
+  const v = _migrationResetFlag;
+  _migrationResetFlag = false;
+  return v;
+}
 
 const newId = (): PlayerId =>
   globalThis.crypto?.randomUUID?.() ?? `p-${Math.random().toString(36).slice(2, 10)}`;
@@ -82,6 +94,8 @@ export type StorytellerStore = {
   setBehaviorMode: (id: PlayerId, mode: BehaviorMode) => void;
   setBluffs: (id: PlayerId, bluffs: RoleId[]) => void;
   setFakeMinions: (id: PlayerId, playerIds: PlayerId[]) => void;
+  setIsTraveler: (id: PlayerId, isTraveler: boolean) => void;
+  setFabled: (fabled: RoleId[]) => void;
 
   setAlive: (id: PlayerId, alive: boolean) => void;
   setGhostVote: (id: PlayerId, ghostVote: boolean) => void;
@@ -92,6 +106,10 @@ export type StorytellerStore = {
 
   setPhase: (phase: StorytellerLobbyRecord["phase"]) => void;
   advancePhase: () => void;
+
+  setNightStepStatus: (day: number, stepKey: string, status: NightStepStatus) => void;
+  setNightStepNotes: (day: number, stepKey: string, notes: string) => void;
+  clearNightProgress: (day: number) => void;
 
   undo: () => void;
 };
@@ -122,6 +140,44 @@ const patchPlayer = (
   };
 };
 
+const CLEAN_STATE = { game: null, view: "home" as const, undoStack: [] as never[], customScripts: {}, lobby: null };
+
+export function migrateStoreState(state: unknown, fromVersion: number): unknown {
+  const s = state as { game?: Record<string, unknown>; undoStack?: unknown[] };
+  if (fromVersion < 2) {
+    if (s.game && !s.game.nightProgress) s.game.nightProgress = {};
+    if (s.undoStack) {
+      s.undoStack = s.undoStack.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        if (!e.nightProgress) e.nightProgress = {};
+        return e;
+      });
+    }
+  }
+  if (fromVersion < 3) {
+    if (s.game) {
+      if (!s.game.fabled) s.game.fabled = [];
+      if (!s.game.bluffs) s.game.bluffs = [];
+    }
+    if (s.undoStack) {
+      s.undoStack = s.undoStack.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        if (!e.fabled) e.fabled = [];
+        if (!e.bluffs) e.bluffs = [];
+        return e;
+      });
+    }
+  }
+  const check = StorytellerStateSchema.safeParse(state);
+  if (!check.success) {
+    // eslint-disable-next-line no-console
+    console.warn("[migrate] persisted state failed validation, resetting:", check.error.flatten());
+    _migrationResetFlag = true;
+    return CLEAN_STATE;
+  }
+  return state;
+}
+
 export const useStorytellerStore = create<StorytellerStore>()(
   persist(
     (set, get) => ({
@@ -148,6 +204,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
           notes: "",
           players: {},
           seatOrder: [],
+          nightProgress: {},
         };
         set({ game, view: "game", undoStack: [], selectedPlayerId: null });
       },
@@ -393,7 +450,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
         const player = game.players[id];
         if (!player) return;
         const next = { ...player };
-        const cleaned = bluffs.filter((b) => !!b);
+        const cleaned = bluffs.filter((b) => !!b).slice(0, 3);
         if (cleaned.length === 0) {
           // Drop the bluffs key entirely; if privateInfo becomes empty, drop it too.
           if (next.privateInfo) {
@@ -440,6 +497,37 @@ export const useStorytellerStore = create<StorytellerStore>()(
             ...game,
             players: { ...game.players, [id]: next },
           },
+        });
+      },
+
+      setIsTraveler: (id, isTraveler) => {
+        const { game, undoStack } = get();
+        if (!game) return;
+        const existing = game.players[id];
+        if (!existing) return;
+        const next: STPlayerRecord = {
+          ...existing,
+          isTraveler,
+          actualRole: "",
+        };
+        delete next.privateInfo;
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: {
+            ...game,
+            players: { ...game.players, [id]: next },
+          },
+        });
+      },
+
+      setFabled: (fabled) => {
+        const { game, undoStack } = get();
+        if (!game) return;
+        const validIds = new Set(FABLED.map((f) => f.id));
+        const deduped = [...new Set(fabled.filter((id) => validIds.has(id)))];
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: { ...game, fabled: deduped },
         });
       },
 
@@ -534,6 +622,50 @@ export const useStorytellerStore = create<StorytellerStore>()(
         });
       },
 
+      setNightStepStatus: (day, stepKey, status) => {
+        const { game, undoStack } = get();
+        if (!game) return;
+        const key = `${day}:${stepKey}`;
+        const np = game.nightProgress ?? {};
+        const existing: NightStepRecord = np[key] ?? { status: "pending", notes: "" };
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: {
+            ...game,
+            nightProgress: { ...np, [key]: { ...existing, status } },
+          },
+        });
+      },
+
+      setNightStepNotes: (day, stepKey, notes) => {
+        const { game } = get();
+        if (!game) return;
+        const key = `${day}:${stepKey}`;
+        const np = game.nightProgress ?? {};
+        const existing: NightStepRecord = np[key] ?? { status: "pending", notes: "" };
+        // No undo push — avoid polluting undo stack with every keystroke.
+        set({
+          game: {
+            ...game,
+            nightProgress: { ...np, [key]: { ...existing, notes } },
+          },
+        });
+      },
+
+      clearNightProgress: (day) => {
+        const { game, undoStack } = get();
+        if (!game) return;
+        const prefix = `${day}:`;
+        const next: Record<string, NightStepRecord> = {};
+        for (const [k, v] of Object.entries(game.nightProgress ?? {})) {
+          if (!k.startsWith(prefix)) next[k] = v;
+        }
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: { ...game, nightProgress: next },
+        });
+      },
+
       undo: () => {
         const { undoStack } = get();
         if (undoStack.length === 0) return;
@@ -546,8 +678,9 @@ export const useStorytellerStore = create<StorytellerStore>()(
     }),
     {
       name: "new-blood-st",
-      version: 1,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
+      migrate: migrateStoreState,
       partialize: (s) => ({
         game: s.game,
         view: s.view,

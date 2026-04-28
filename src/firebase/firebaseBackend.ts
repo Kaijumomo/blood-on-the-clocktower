@@ -49,7 +49,9 @@ export async function ensureAuthUid(auth: Auth): Promise<string> {
     cachedUid = auth.currentUser.uid;
     return cachedUid;
   }
-  if (cachedUid) return cachedUid;
+  // auth.currentUser is null — token may have expired. Never serve stale
+  // cachedUid here; always re-authenticate to get a fresh, valid UID.
+  cachedUid = null;
   const cred = await signInAnonymously(auth);
   cachedUid = cred.user.uid;
   return cachedUid;

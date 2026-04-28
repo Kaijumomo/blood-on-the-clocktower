@@ -77,6 +77,13 @@ export type STPlayerRecord = {
   privateInfo?: PrivateInfo;
 };
 
+export type NightStepStatus = "pending" | "done" | "skipped";
+
+export type NightStepRecord = {
+  status: NightStepStatus;
+  notes: string;
+};
+
 export type StorytellerLobbyRecord = {
   code: string;
   storytellerUid: string;
@@ -88,6 +95,8 @@ export type StorytellerLobbyRecord = {
   notes: string;
   players: Record<PlayerId, STPlayerRecord>;
   seatOrder: PlayerId[];
+  /** Keys: "${day}:${stepKey}" — e.g. "1:demonInfo", "2:p:abc123" */
+  nightProgress: Record<string, NightStepRecord>;
 };
 
 export type PlayerSelfRecord = {

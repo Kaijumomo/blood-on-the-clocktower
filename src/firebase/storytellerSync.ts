@@ -20,7 +20,10 @@ import type { RoomBackend } from "./backend";
 
 const WRITE_DEBOUNCE_MS = 200;
 
-export function useStorytellerSync(backend: RoomBackend | null) {
+export function useStorytellerSync(
+  backend: RoomBackend | null,
+  onSyncError?: (msg: string | null) => void
+) {
   const lobby = useStorytellerStore((s) => s.lobby);
 
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -43,11 +46,12 @@ export function useStorytellerSync(backend: RoomBackend | null) {
       const online: OnlineMap = {};
       try {
         await writeProjections({ backend, code, stState: game, registry, online });
+        // Clear any previous sync error banner on success.
+        onSyncError?.(null);
       } catch (e) {
-        // Silently log; reconnect logic will retry later. The full retry
-        // policy is a 5c concern.
         // eslint-disable-next-line no-console
-        console.warn("[sync] writeProjections failed:", e);
+        console.warn("[sync] writeProjections failed:", e instanceof Error ? e.message : e);
+        onSyncError?.("Last sync failed — retrying…");
       }
     };
 
@@ -139,7 +143,11 @@ export function useStorytellerSync(backend: RoomBackend | null) {
           await seatPlayer(backend, code, knock.uid, playerId, self);
         } catch (e) {
           // eslint-disable-next-line no-console
-          console.warn("[sync] seatPlayer failed:", e);
+          console.warn("[sync] seatPlayer failed:", e instanceof Error ? e.message : e);
+          onSyncError?.(
+            `Couldn't seat "${knock.name}" — they may be stuck on "Waiting". ` +
+              "Check the console for details."
+          );
         }
       }
     });

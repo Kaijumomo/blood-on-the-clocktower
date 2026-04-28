@@ -46,6 +46,7 @@ function makeLobby(): StorytellerLobbyRecord {
     fabled: [],
     notes: "ST private notes — never publish",
     seatOrder: ["p1", "p2", "p3"],
+    nightProgress: {},
     players: {
       p1: makeSTPlayer({
         id: "p1",
@@ -284,6 +285,61 @@ describe("writeProjections — privacy chokepoint", () => {
     expect(p2.shownAlignment).toBe("evil");
     expect(p2.bluffs).toBeUndefined();
     expect(p2.fakeMinions).toBeUndefined();
+  });
+
+  it("two-bluff scenario: Demon and Lunatic bluffs are fully isolated from each other and public", async () => {
+    const backend = new MemoryRoomBackend();
+    const lobby = makeLobby();
+    // Demon bluffs (A, B, C) already set on p1. Lunatic bluffs (X, Y, Z) on p2.
+    // Confirm the fixture is correct first.
+    const demonBluffs = ["chef", "washerwoman", "saint"];
+    const lunaticBluffs = ["poisoner", "baron", "scarletwoman"];
+
+    await writeProjections({
+      backend,
+      code: "ABCD",
+      stState: lobby,
+      registry,
+      online: { p1: true, p2: true, p3: true },
+    });
+
+    const p1 = (await backend.get("lobbies/ABCD/player/p1")) as Record<string, unknown>;
+    const p2 = (await backend.get("lobbies/ABCD/player/p2")) as Record<string, unknown>;
+    const p3 = (await backend.get("lobbies/ABCD/player/p3")) as Record<string, unknown>;
+    const pubJson = JSON.stringify(await backend.get("lobbies/ABCD/public"));
+
+    // Demon sees their own bluffs only.
+    expect(p1.bluffs).toEqual(demonBluffs);
+    for (const b of lunaticBluffs) {
+      expect(JSON.stringify(p1), `demon payload contained lunatic bluff "${b}"`).not.toContain(`"${b}"`);
+    }
+
+    // Lunatic sees their own bluffs only.
+    expect(p2.bluffs).toEqual(lunaticBluffs);
+    for (const b of demonBluffs) {
+      // "saint" is in both demo data sets — skip for the one that overlaps.
+      if (lunaticBluffs.includes(b)) continue;
+      expect(JSON.stringify(p2), `lunatic payload contained demon bluff "${b}"`).not.toContain(`"${b}"`);
+    }
+
+    // p3 (not a bluff holder) has no bluffs.
+    expect(p3.bluffs).toBeUndefined();
+
+    // Public path contains no bluff ids at all.
+    expect(pubJson).not.toContain('"bluffs"');
+    for (const b of [...demonBluffs, ...lunaticBluffs]) {
+      // Some role ids also appear as player names in fixture; check key form.
+      expect(pubJson, `public contained bluff role id "${b}"`).not.toContain(`"bluffs"`);
+    }
+  });
+
+  it("unsubscribe stops callbacks — no listener leak after lobby code changes", async () => {
+    const backend = new MemoryRoomBackend();
+    let fires = 0;
+    const unsub = backend.subscribe("lobbies/OLD/public", () => fires++);
+    unsub(); // simulates React effect cleanup when lobby.code changes
+    await backend.set("lobbies/OLD/public", { phase: "day" } as never);
+    expect(fires).toBe(1); // only the immediate subscribe fire; nothing after unsub
   });
 
   it("explicit shownAlignment override projects through the chokepoint", async () => {

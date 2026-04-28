@@ -95,6 +95,18 @@ export function HomeScreen() {
         <a className="btn home-player-link" href="?join=">
           Join a lobby (player)
         </a>
+        <button
+          className="btn"
+          onClick={() => {
+            const raw = window.prompt("Lobby code for public display?");
+            const code = raw?.trim().toUpperCase();
+            if (code) {
+              window.location.search = `?display=public&code=${encodeURIComponent(code)}`;
+            }
+          }}
+        >
+          Open public display
+        </button>
         {game && (
           <button
             className="btn btn-sm btn-danger"

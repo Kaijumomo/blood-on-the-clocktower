@@ -109,6 +109,14 @@ export function friendlyFirebaseError(
           diagnostic: raw,
         };
       }
+      if (/could not allocate a lobby code/i.test(raw)) {
+        return {
+          title: "Lobby code unavailable",
+          message:
+            "All generated codes are in use. Wait a moment and try again — codes free up as games end.",
+          diagnostic: raw,
+        };
+      }
       return {
         title: "Something went wrong",
         message: raw || "Unknown Firebase error.",

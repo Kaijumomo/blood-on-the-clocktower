@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useStorytellerStore, selectScriptById } from "@/stores/storytellerStore";
 import { deriveAlignment } from "@/data/roleRegistry";
+import { TRAVELERS } from "@/data/travelers";
 import type {
   Alignment,
   BehaviorMode,
@@ -133,6 +134,7 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
   const setBehaviorMode = useStorytellerStore((s) => s.setBehaviorMode);
   const setBluffs = useStorytellerStore((s) => s.setBluffs);
   const setFakeMinions = useStorytellerStore((s) => s.setFakeMinions);
+  const setIsTraveler = useStorytellerStore((s) => s.setIsTraveler);
   const setAlive = useStorytellerStore((s) => s.setAlive);
   const setGhostVote = useStorytellerStore((s) => s.setGhostVote);
   const setAbilityUsed = useStorytellerStore((s) => s.setAbilityUsed);
@@ -152,9 +154,27 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
     [script]
   );
 
+  // Roles currently assigned to any player — used to exclude from bluff pickers.
+  const inPlayRoles = useMemo(
+    () =>
+      new Set(
+        Object.values(game?.players ?? {})
+          .map((p) => p.actualRole)
+          .filter(Boolean)
+      ),
+    [game?.players]
+  );
+
   if (!game || !script) return null;
   const role = player.actualRole ? roleById.get(player.actualRole) : undefined;
   const shownRoleDef = player.shownRole ? roleById.get(player.shownRole) : undefined;
+
+  // When traveler, look up role from traveler list instead of script.
+  const travelerRoleDef = player.isTraveler && player.actualRole
+    ? TRAVELERS.find((t) => t.id === player.actualRole)
+    : undefined;
+
+  const displayRole = role ?? travelerRoleDef;
 
   const close = () => selectPlayer(null);
 
@@ -181,9 +201,12 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
 
   const effectiveAlignment: Alignment | "—" = (() => {
     if (player.shownAlignment) return player.shownAlignment;
-    const ref = shownRoleDef ?? role;
+    const ref = shownRoleDef ?? displayRole;
     return ref ? deriveAlignment(ref) : "—";
   })();
+
+  // Role pool for the main "Actual role" picker.
+  const rolePool = player.isTraveler ? TRAVELERS : script.characters;
 
   return (
     <>
@@ -271,26 +294,44 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
           </section>
 
           <section className="drawer-section">
-            <h3 className="drawer-section-title">Actual role (ST private)</h3>
-            {role ? (
-              <div className="role-display">
-                <span className={`role-display-label type-${role.type}`}>
-                  {role.name}
+            <h3 className="drawer-section-title">Travel status</h3>
+            <div className="drawer-row">
+              <button
+                className="toggle-pill"
+                aria-pressed={player.isTraveler}
+                onClick={() => setIsTraveler(player.id, !player.isTraveler)}
+              >
+                {player.isTraveler ? "Traveler" : "Not a traveler"}
+              </button>
+              {player.isTraveler && (
+                <span className="behavior-help">
+                  Role picker shows travelers only.
                 </span>
-                <span className="label">{role.type}</span>
-                {role.ability && (
-                  <p className="role-display-ability">{role.ability}</p>
+              )}
+            </div>
+          </section>
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">Actual role (ST private)</h3>
+            {displayRole ? (
+              <div className="role-display">
+                <span className={`role-display-label type-${displayRole.type}`}>
+                  {displayRole.name}
+                </span>
+                <span className="label">{displayRole.type}</span>
+                {displayRole.ability && (
+                  <p className="role-display-ability">{displayRole.ability}</p>
                 )}
               </div>
             ) : (
               <p className="behavior-help">No role assigned yet.</p>
             )}
             <RolePickerGrid
-              roles={script.characters}
+              roles={rolePool}
               selectedRoleId={player.actualRole || null}
               onPick={(id) => assignRole(player.id, id)}
             />
-            {role && (
+            {displayRole && (
               <div className="drawer-row">
                 <button
                   className="btn btn-sm btn-danger"
@@ -302,7 +343,7 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
             )}
           </section>
 
-          {role && (
+          {displayRole && !player.isTraveler && (
             <section className="drawer-section">
               <h3 className="drawer-section-title">
                 Behavior &amp; deception
@@ -391,11 +432,22 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
               player={player}
               roles={script.characters}
               roleById={roleById}
+              inPlayRoles={inPlayRoles}
               otherPlayers={Object.values(game.players)
                 .filter((p) => p.id !== player.id)
                 .sort((a, b) => a.seat - b.seat)}
               onSetBluffs={(b) => setBluffs(player.id, b)}
               onSetFakeMinions={(ids) => setFakeMinions(player.id, ids)}
+            />
+          )}
+
+          {role?.type === "demon" && player.behaviorMode === "normal" && (
+            <DemonInfo
+              player={player}
+              roles={script.characters}
+              roleById={roleById}
+              inPlayRoles={inPlayRoles}
+              onSetBluffs={(b) => setBluffs(player.id, b)}
             />
           )}
 
@@ -476,35 +528,29 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Shared bluff slot picker
+// ---------------------------------------------------------------------------
+
 const BLUFF_SLOT_COUNT = 3;
 
-type LunaticInfoProps = {
-  player: STPlayerRecord;
-  roles: RoleDef[];
+type BluffSlotPickerProps = {
+  bluffs: string[];
+  rolePool: RoleDef[];
   roleById: Map<string, RoleDef>;
-  otherPlayers: STPlayerRecord[];
   onSetBluffs: (bluffs: string[]) => void;
-  onSetFakeMinions: (ids: string[]) => void;
+  inPlayRoles?: Set<string>;
 };
 
-function LunaticInfo({
-  player,
-  roles,
+function BluffSlotPicker({
+  bluffs,
+  rolePool,
   roleById,
-  otherPlayers,
   onSetBluffs,
-  onSetFakeMinions,
-}: LunaticInfoProps) {
-  const bluffs = player.privateInfo?.bluffs ?? [];
-  const fakeMinions = player.privateInfo?.fakeMinions ?? [];
-
-  const goodPool = roles.filter(
-    (r) => r.type === "townsfolk" || r.type === "outsider"
-  );
-
+  inPlayRoles,
+}: BluffSlotPickerProps) {
   const removeBluff = (idx: number) => {
-    const next = bluffs.filter((_, i) => i !== idx);
-    onSetBluffs(next);
+    onSetBluffs(bluffs.filter((_, i) => i !== idx));
   };
 
   const addBluff = (id: string) => {
@@ -513,24 +559,10 @@ function LunaticInfo({
     onSetBluffs([...bluffs, id]);
   };
 
-  const toggleMinion = (pid: string) => {
-    if (fakeMinions.includes(pid)) {
-      onSetFakeMinions(fakeMinions.filter((m) => m !== pid));
-    } else {
-      onSetFakeMinions([...fakeMinions, pid]);
-    }
-  };
-
   return (
-    <section className="drawer-section">
-      <h3 className="drawer-section-title">Lunatic info (ST private)</h3>
-      <p className="behavior-help">
-        Pick the 3 fake demon-bluff characters this Lunatic was shown, and
-        which players they were told are their fellow minions.
-      </p>
-
+    <>
       <div className="behavior-row">
-        <label>Fake bluffs:</label>
+        <label>Bluffs:</label>
         <span className="label">
           {bluffs.length} / {BLUFF_SLOT_COUNT}
         </span>
@@ -565,10 +597,102 @@ function LunaticInfo({
         })}
       </div>
       <RolePickerGrid
-        roles={goodPool}
+        roles={rolePool}
         selectedRoleId={null}
         onPick={addBluff}
-        filter={(r) => !bluffs.includes(r.id)}
+        filter={(r) => !bluffs.includes(r.id) && !(inPlayRoles?.has(r.id))}
+      />
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DemonInfo
+// ---------------------------------------------------------------------------
+
+type DemonInfoProps = {
+  player: STPlayerRecord;
+  roles: RoleDef[];
+  roleById: Map<string, RoleDef>;
+  inPlayRoles: Set<string>;
+  onSetBluffs: (bluffs: string[]) => void;
+};
+
+function DemonInfo({ player, roles, roleById, inPlayRoles, onSetBluffs }: DemonInfoProps) {
+  const bluffs = player.privateInfo?.bluffs ?? [];
+  const goodPool = roles.filter(
+    (r) => r.type === "townsfolk" || r.type === "outsider"
+  );
+
+  return (
+    <section className="drawer-section">
+      <h3 className="drawer-section-title">Demon bluffs (ST private)</h3>
+      <p className="behavior-help">
+        These 3 not-in-play characters are shown to the Demon as bluffs.
+      </p>
+      <BluffSlotPicker
+        bluffs={bluffs}
+        rolePool={goodPool}
+        roleById={roleById}
+        onSetBluffs={onSetBluffs}
+        inPlayRoles={inPlayRoles}
+      />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// LunaticInfo
+// ---------------------------------------------------------------------------
+
+type LunaticInfoProps = {
+  player: STPlayerRecord;
+  roles: RoleDef[];
+  roleById: Map<string, RoleDef>;
+  inPlayRoles: Set<string>;
+  otherPlayers: STPlayerRecord[];
+  onSetBluffs: (bluffs: string[]) => void;
+  onSetFakeMinions: (ids: string[]) => void;
+};
+
+function LunaticInfo({
+  player,
+  roles,
+  roleById,
+  inPlayRoles,
+  otherPlayers,
+  onSetBluffs,
+  onSetFakeMinions,
+}: LunaticInfoProps) {
+  const bluffs = player.privateInfo?.bluffs ?? [];
+  const fakeMinions = player.privateInfo?.fakeMinions ?? [];
+
+  const goodPool = roles.filter(
+    (r) => r.type === "townsfolk" || r.type === "outsider"
+  );
+
+  const toggleMinion = (pid: string) => {
+    if (fakeMinions.includes(pid)) {
+      onSetFakeMinions(fakeMinions.filter((m) => m !== pid));
+    } else {
+      onSetFakeMinions([...fakeMinions, pid]);
+    }
+  };
+
+  return (
+    <section className="drawer-section">
+      <h3 className="drawer-section-title">Lunatic info (ST private)</h3>
+      <p className="behavior-help">
+        Pick the 3 fake demon-bluff characters this Lunatic was shown, and
+        which players they were told are their fellow minions.
+      </p>
+
+      <BluffSlotPicker
+        bluffs={bluffs}
+        rolePool={goodPool}
+        roleById={roleById}
+        onSetBluffs={onSetBluffs}
+        inPlayRoles={inPlayRoles}
       />
 
       <div className="behavior-row">

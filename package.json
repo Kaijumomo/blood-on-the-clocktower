@@ -12,7 +12,8 @@
     "test:rules": "vitest run --config vitest.rules.config.ts",
     "typecheck": "tsc -b --noEmit",
     "rules:deploy": "firebase deploy --only database",
-    "emulator": "firebase emulators:start --only database"
+    "emulator": "firebase emulators:start --only database",
+    "test:full": "npm run typecheck && vitest run && npm run test:rules"
   },
   "dependencies": {
     "firebase": "^12.12.1",

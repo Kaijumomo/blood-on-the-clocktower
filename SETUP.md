@@ -90,6 +90,49 @@ npm run test:rules
 These verify the security rules enforce the privacy boundary against
 adversarial uids.
 
+## Full pre-release test suite
+
+Run all checks (typecheck, unit tests, and rules tests) in a single command:
+
+```
+# Start the emulator first (separate terminal), then:
+npm run test:full
+```
+
+`test:full` = `typecheck` + `vitest run` + `test:rules`. The rules suite
+skips gracefully if the emulator is not running, so `test:full` is also safe
+to run without the emulator for a quick sanity check.
+
+## Deploying
+
+Build a production bundle:
+
+```
+npm run build
+```
+
+This emits a `dist/` directory. The `firebaseBackend-*.js` chunk (Firebase SDK,
+~340 kB gzip: ~73 kB) is split automatically — it loads on-demand when the
+first Firebase call is made.
+
+### Netlify / Cloudflare Pages
+
+Drop `dist/` as the publish directory. The `public/_redirects` file (`/* /index.html 200`)
+is copied into `dist/` automatically by Vite and enables client-side routing
+(users can deep-link to `?join=ABCD` without getting a 404).
+
+### Source maps
+
+`build.sourcemap: true` is set in `vite.config.ts` — `.js.map` files are
+included in `dist/`. They are safe to ship; they reveal source structure but
+not secrets (no credentials live in source).
+
+### Console stripping
+
+`esbuild.drop: ["console", "debugger"]` is active for production builds — all
+`console.log/warn/error` calls are removed from the bundle. This prevents
+diagnostic output from leaking into players' browser consoles.
+
 ## Architecture documents
 
 - `src/firebase/PROTOCOL.md` — load-bearing decisions (roster two-phase

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { useStorytellerStore, selectScriptById } from "./storytellerStore";
+import {
+  useStorytellerStore,
+  selectScriptById,
+  migrateStoreState,
+  takeMigrationResetFlag,
+} from "./storytellerStore";
 import type { Script } from "./types";
 
 const minimalScript = (id: string, name = "Test Script"): Script => ({
@@ -179,5 +184,177 @@ describe("Lunatic / deception state", () => {
     const player = useStorytellerStore.getState().game!.players[p1]!;
     expect(player.privateInfo?.fakeMinions).toEqual([p2]);
     expect(player.privateInfo?.bluffs).toEqual(["chef"]);
+  });
+});
+
+describe("setIsTraveler", () => {
+  function setupGame(): { p1: string } {
+    useStorytellerStore.getState().newGame("tb");
+    useStorytellerStore.getState().addPlayer("Alice");
+    const order = useStorytellerStore.getState().game!.seatOrder;
+    return { p1: order[0]! };
+  }
+
+  it("setIsTraveler(true) sets isTraveler and clears actualRole + privateInfo", () => {
+    const { p1 } = setupGame();
+    useStorytellerStore.getState().assignRole(p1, "imp");
+    useStorytellerStore.getState().setBluffs(p1, ["chef", "saint"]);
+    useStorytellerStore.getState().setIsTraveler(p1, true);
+    const player = useStorytellerStore.getState().game!.players[p1]!;
+    expect(player.isTraveler).toBe(true);
+    expect(player.actualRole).toBe("");
+    expect(player.privateInfo).toBeUndefined();
+  });
+
+  it("setIsTraveler(false) also clears actualRole", () => {
+    const { p1 } = setupGame();
+    useStorytellerStore.getState().setIsTraveler(p1, true);
+    useStorytellerStore.getState().assignRole(p1, "bureaucrat");
+    useStorytellerStore.getState().setIsTraveler(p1, false);
+    const player = useStorytellerStore.getState().game!.players[p1]!;
+    expect(player.isTraveler).toBe(false);
+    expect(player.actualRole).toBe("");
+  });
+
+  it("setIsTraveler is undoable", () => {
+    const { p1 } = setupGame();
+    useStorytellerStore.getState().assignRole(p1, "imp");
+    useStorytellerStore.getState().setIsTraveler(p1, true);
+    expect(useStorytellerStore.getState().game!.players[p1]!.isTraveler).toBe(true);
+    useStorytellerStore.getState().undo();
+    expect(useStorytellerStore.getState().game!.players[p1]!.isTraveler).toBe(false);
+    expect(useStorytellerStore.getState().game!.players[p1]!.actualRole).toBe("imp");
+  });
+});
+
+describe("setFabled", () => {
+  it("setFabled writes fabled array to game", () => {
+    useStorytellerStore.getState().newGame("tb");
+    useStorytellerStore.getState().setFabled(["djinn", "doomsayer"]);
+    expect(useStorytellerStore.getState().game!.fabled).toEqual(["djinn", "doomsayer"]);
+  });
+
+  it("setFabled is undoable", () => {
+    useStorytellerStore.getState().newGame("tb");
+    useStorytellerStore.getState().setFabled(["djinn"]);
+    useStorytellerStore.getState().setFabled(["djinn", "doomsayer"]);
+    useStorytellerStore.getState().undo();
+    expect(useStorytellerStore.getState().game!.fabled).toEqual(["djinn"]);
+  });
+
+  it("setFabled([]) clears the fabled list", () => {
+    useStorytellerStore.getState().newGame("tb");
+    useStorytellerStore.getState().setFabled(["djinn"]);
+    useStorytellerStore.getState().setFabled([]);
+    expect(useStorytellerStore.getState().game!.fabled).toEqual([]);
+  });
+
+  it("game.fabled persists after advancing phase from setup to night", () => {
+    useStorytellerStore.getState().newGame("tb");
+    useStorytellerStore.getState().setFabled(["djinn", "doomsayer"]);
+    useStorytellerStore.getState().advancePhase(); // setup → night
+    const game = useStorytellerStore.getState().game!;
+    expect(game.phase).toBe("night");
+    expect(game.fabled).toEqual(["djinn", "doomsayer"]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// E1: migrateStoreState — schema roundtrip tests
+// ---------------------------------------------------------------------------
+
+const minimalPersistedGame = (
+  overrides: Record<string, unknown> = {}
+): Record<string, unknown> => ({
+  code: "",
+  storytellerUid: "",
+  scriptId: "tb",
+  phase: "setup",
+  day: 0,
+  notes: "",
+  players: {},
+  seatOrder: [],
+  nightProgress: {},
+  fabled: [],
+  bluffs: [],
+  ...overrides,
+});
+
+describe("migrateStoreState", () => {
+  beforeEach(() => {
+    // Drain the flag so each test starts with it cleared.
+    takeMigrationResetFlag();
+  });
+
+  it("v1→current: adds nightProgress, fabled, and bluffs to game and undoStack", () => {
+    const bareGame = {
+      code: "",
+      storytellerUid: "",
+      scriptId: "tb",
+      phase: "setup",
+      day: 0,
+      notes: "",
+      players: {},
+      seatOrder: [],
+      // deliberately omit nightProgress, fabled, bluffs (v1 shape)
+    };
+    const state = { game: { ...bareGame }, undoStack: [{ ...bareGame }] };
+    const result = migrateStoreState(state, 1) as {
+      game: Record<string, unknown>;
+      undoStack: Record<string, unknown>[];
+    };
+    expect(result.game.nightProgress).toEqual({});
+    expect(result.game.fabled).toEqual([]);
+    expect(result.game.bluffs).toEqual([]);
+    expect(result.undoStack[0]!.nightProgress).toEqual({});
+    expect(result.undoStack[0]!.fabled).toEqual([]);
+    expect(result.undoStack[0]!.bluffs).toEqual([]);
+  });
+
+  it("v2→current: adds fabled and bluffs without touching existing nightProgress", () => {
+    const existingProgress = { "p:abc": { status: "done", notes: "done" } };
+    const state = {
+      game: {
+        ...minimalPersistedGame({ nightProgress: existingProgress }),
+        fabled: undefined,
+        bluffs: undefined,
+      },
+      undoStack: [],
+    };
+    const result = migrateStoreState(state, 2) as {
+      game: Record<string, unknown>;
+    };
+    expect(result.game.fabled).toEqual([]);
+    expect(result.game.bluffs).toEqual([]);
+    expect(result.game.nightProgress).toEqual(existingProgress);
+  });
+
+  it("v3 (current): valid state passes through — same object reference returned", () => {
+    const state = { game: minimalPersistedGame(), undoStack: [] };
+    const result = migrateStoreState(state, 3);
+    expect(result).toBe(state);
+    expect(takeMigrationResetFlag()).toBe(false);
+  });
+
+  it("null game passes through without error", () => {
+    const state = { game: null, undoStack: [] };
+    const result = migrateStoreState(state, 3);
+    expect(result).toBe(state);
+    expect(takeMigrationResetFlag()).toBe(false);
+  });
+
+  it("corrupt state returns clean defaults and sets the reset flag", () => {
+    // scriptId must be a string — passing a number should fail validation.
+    const corrupt = { game: { scriptId: 42, phase: "setup", day: 0 } };
+    migrateStoreState(corrupt, 3);
+    expect(takeMigrationResetFlag()).toBe(true);
+  });
+
+  it("takeMigrationResetFlag is auto-cleared after first read", () => {
+    const corrupt = { game: { scriptId: 42 } };
+    migrateStoreState(corrupt, 3);
+    expect(takeMigrationResetFlag()).toBe(true);
+    // Second read must return false — flag was consumed.
+    expect(takeMigrationResetFlag()).toBe(false);
   });
 });
