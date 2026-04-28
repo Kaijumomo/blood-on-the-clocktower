@@ -1,0 +1,597 @@
+import { useEffect, useMemo, useState } from "react";
+import { useStorytellerStore, selectScriptById } from "@/stores/storytellerStore";
+import { deriveAlignment } from "@/data/roleRegistry";
+import type {
+  Alignment,
+  BehaviorMode,
+  RoleDef,
+  RoleType,
+  STPlayerRecord,
+} from "@/stores/types";
+
+const STATUSES = ["drunk", "poisoned", "protected"] as const;
+const TYPE_ORDER: RoleType[] = [
+  "townsfolk",
+  "outsider",
+  "minion",
+  "demon",
+  "traveler",
+  "fabled",
+];
+
+const REMINDER_PRESETS = [
+  "Used",
+  "Drunk",
+  "Poisoned",
+  "Protected",
+  "Mad",
+  "Knows",
+  "Did not act",
+  "Dies tonight",
+];
+
+const BEHAVIOR_MODES: { value: BehaviorMode; label: string; help: string }[] = [
+  { value: "normal", label: "Normal", help: "Acts as their actual role." },
+  {
+    value: "drunk_fake_role_behavior",
+    label: "Drunk (fake role)",
+    help: "Believes they are their shown role. Wake them at the shown role's night times; their info should be wrong.",
+  },
+  {
+    value: "fake_demon_behavior",
+    label: "Fake demon (Lunatic)",
+    help: "Believes they are the demon. Wake at demon times; give fake bluffs and (optionally) fake minions.",
+  },
+  {
+    value: "marionette_fake_good_behavior",
+    label: "Fake good (Marionette)",
+    help: "Believes they are a good Townsfolk. Sat next to the demon; gets a Minion-style intro from the ST.",
+  },
+  {
+    value: "poisoned",
+    label: "Poisoned",
+    help: "Use the Poisoned status chip for nightly poisoning. Use this mode only for ongoing fake-info behavior.",
+  },
+  { value: "custom", label: "Custom", help: "Track manually with notes." },
+];
+
+function groupByType(roles: RoleDef[]) {
+  const out: Record<RoleType, RoleDef[]> = {
+    townsfolk: [],
+    outsider: [],
+    minion: [],
+    demon: [],
+    traveler: [],
+    fabled: [],
+  };
+  for (const r of roles) out[r.type].push(r);
+  return out;
+}
+
+function RolePickerGrid({
+  roles,
+  selectedRoleId,
+  onPick,
+  filter,
+}: {
+  roles: RoleDef[];
+  selectedRoleId: string | null;
+  onPick: (id: string) => void;
+  filter?: (r: RoleDef) => boolean;
+}) {
+  const filtered = filter ? roles.filter(filter) : roles;
+  const grouped = groupByType(filtered);
+  return (
+    <div className="role-picker">
+      {TYPE_ORDER.map((t) => {
+        const list = grouped[t];
+        if (!list.length) return null;
+        return (
+          <div key={t}>
+            <div className={`role-picker-group-title type-${t}`}>{t}</div>
+            <div className="role-picker-grid">
+              {list.map((r) => (
+                <button
+                  key={r.id}
+                  className={`role-card ${selectedRoleId === r.id ? "selected" : ""}`}
+                  onClick={() => onPick(r.id)}
+                  title={r.ability}
+                >
+                  <span className={`role-card-name type-${r.type}`}>{r.name}</span>
+                  <span className="role-card-type">{r.type}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function shownRoleFilter(behavior: BehaviorMode): ((r: RoleDef) => boolean) | undefined {
+  if (behavior === "drunk_fake_role_behavior")
+    return (r) => r.type === "townsfolk";
+  if (behavior === "fake_demon_behavior") return (r) => r.type === "demon";
+  if (behavior === "marionette_fake_good_behavior")
+    return (r) => r.type === "townsfolk" || r.type === "outsider";
+  return undefined;
+}
+
+export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
+  const game = useStorytellerStore((s) => s.game);
+  const script = useStorytellerStore((s) =>
+    game ? selectScriptById(s, game.scriptId) : undefined
+  );
+  const selectPlayer = useStorytellerStore((s) => s.selectPlayer);
+  const renamePlayer = useStorytellerStore((s) => s.renamePlayer);
+  const removePlayer = useStorytellerStore((s) => s.removePlayer);
+  const movePlayer = useStorytellerStore((s) => s.movePlayer);
+  const assignRole = useStorytellerStore((s) => s.assignRole);
+  const setShownRole = useStorytellerStore((s) => s.setShownRole);
+  const setShownAlignment = useStorytellerStore((s) => s.setShownAlignment);
+  const setBehaviorMode = useStorytellerStore((s) => s.setBehaviorMode);
+  const setBluffs = useStorytellerStore((s) => s.setBluffs);
+  const setFakeMinions = useStorytellerStore((s) => s.setFakeMinions);
+  const setAlive = useStorytellerStore((s) => s.setAlive);
+  const setGhostVote = useStorytellerStore((s) => s.setGhostVote);
+  const setAbilityUsed = useStorytellerStore((s) => s.setAbilityUsed);
+  const setStatus = useStorytellerStore((s) => s.setStatus);
+  const setReminders = useStorytellerStore((s) => s.setReminders);
+  const setNotes = useStorytellerStore((s) => s.setNotes);
+
+  const [nameDraft, setNameDraft] = useState(player.name);
+  const [reminderDraft, setReminderDraft] = useState("");
+
+  useEffect(() => {
+    setNameDraft(player.name);
+  }, [player.id, player.name]);
+
+  const roleById = useMemo(
+    () => new Map((script?.characters ?? []).map((c) => [c.id, c])),
+    [script]
+  );
+
+  if (!game || !script) return null;
+  const role = player.actualRole ? roleById.get(player.actualRole) : undefined;
+  const shownRoleDef = player.shownRole ? roleById.get(player.shownRole) : undefined;
+
+  const close = () => selectPlayer(null);
+
+  const commitName = () => {
+    if (nameDraft.trim() && nameDraft.trim() !== player.name) {
+      renamePlayer(player.id, nameDraft);
+    } else {
+      setNameDraft(player.name);
+    }
+  };
+
+  const addReminder = (text: string) => {
+    const t = text.trim();
+    if (!t) return;
+    setReminders(player.id, [...player.reminders, t]);
+    setReminderDraft("");
+  };
+  const removeReminder = (idx: number) => {
+    setReminders(
+      player.id,
+      player.reminders.filter((_, i) => i !== idx)
+    );
+  };
+
+  const effectiveAlignment: Alignment | "—" = (() => {
+    if (player.shownAlignment) return player.shownAlignment;
+    const ref = shownRoleDef ?? role;
+    return ref ? deriveAlignment(ref) : "—";
+  })();
+
+  return (
+    <>
+      <div className="drawer-backdrop" onClick={close} />
+      <aside className="drawer" role="dialog" aria-label="Player editor">
+        <div className="drawer-header">
+          <input
+            className="drawer-name"
+            value={nameDraft}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              if (e.key === "Escape") {
+                setNameDraft(player.name);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+          />
+          <button className="btn btn-sm" onClick={close} aria-label="Close">
+            ✕
+          </button>
+        </div>
+
+        <div className="drawer-body">
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">Seat</h3>
+            <div className="drawer-row">
+              <button
+                className="btn btn-sm"
+                onClick={() => movePlayer(player.id, "left")}
+              >
+                ← move
+              </button>
+              <span className="label">seat {player.seat + 1}</span>
+              <button
+                className="btn btn-sm"
+                onClick={() => movePlayer(player.id, "right")}
+              >
+                move →
+              </button>
+            </div>
+          </section>
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">State</h3>
+            <div className="drawer-row">
+              <button
+                className="toggle-pill"
+                aria-pressed={player.alive}
+                onClick={() => setAlive(player.id, !player.alive)}
+              >
+                {player.alive ? "Alive" : "Dead"}
+              </button>
+              {!player.alive && (
+                <button
+                  className="toggle-pill"
+                  aria-pressed={player.ghostVote}
+                  onClick={() => setGhostVote(player.id, !player.ghostVote)}
+                >
+                  Ghost vote {player.ghostVote ? "available" : "used"}
+                </button>
+              )}
+              <button
+                className="toggle-pill"
+                aria-pressed={player.abilityUsed}
+                onClick={() => setAbilityUsed(player.id, !player.abilityUsed)}
+              >
+                Ability used
+              </button>
+            </div>
+            <div className="drawer-row">
+              {STATUSES.map((s) => (
+                <button
+                  key={s}
+                  className="toggle-pill"
+                  data-kind={s}
+                  aria-pressed={!!player.statuses[s]}
+                  onClick={() => setStatus(player.id, s, !player.statuses[s])}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">Actual role (ST private)</h3>
+            {role ? (
+              <div className="role-display">
+                <span className={`role-display-label type-${role.type}`}>
+                  {role.name}
+                </span>
+                <span className="label">{role.type}</span>
+                {role.ability && (
+                  <p className="role-display-ability">{role.ability}</p>
+                )}
+              </div>
+            ) : (
+              <p className="behavior-help">No role assigned yet.</p>
+            )}
+            <RolePickerGrid
+              roles={script.characters}
+              selectedRoleId={player.actualRole || null}
+              onPick={(id) => assignRole(player.id, id)}
+            />
+            {role && (
+              <div className="drawer-row">
+                <button
+                  className="btn btn-sm btn-danger"
+                  onClick={() => assignRole(player.id, "")}
+                >
+                  Clear role
+                </button>
+              </div>
+            )}
+          </section>
+
+          {role && (
+            <section className="drawer-section">
+              <h3 className="drawer-section-title">
+                Behavior &amp; deception
+              </h3>
+              <div className="behavior-row">
+                <label htmlFor="behavior-mode">Mode:</label>
+                <select
+                  id="behavior-mode"
+                  className="select"
+                  value={player.behaviorMode}
+                  onChange={(e) =>
+                    setBehaviorMode(player.id, e.target.value as BehaviorMode)
+                  }
+                >
+                  {BEHAVIOR_MODES.map((m) => (
+                    <option key={m.value} value={m.value}>
+                      {m.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <p className="behavior-help">
+                {BEHAVIOR_MODES.find((m) => m.value === player.behaviorMode)?.help}
+              </p>
+
+              {player.behaviorMode !== "normal" &&
+                player.behaviorMode !== "poisoned" &&
+                player.behaviorMode !== "custom" && (
+                  <>
+                    <div className="behavior-row">
+                      <label>Shown role:</label>
+                      {shownRoleDef ? (
+                        <span className={`role-display-label type-${shownRoleDef.type}`}>
+                          {shownRoleDef.name}
+                        </span>
+                      ) : (
+                        <span className="behavior-help">none</span>
+                      )}
+                      {shownRoleDef && (
+                        <button
+                          className="btn btn-sm btn-danger"
+                          onClick={() => setShownRole(player.id, null)}
+                        >
+                          clear
+                        </button>
+                      )}
+                    </div>
+                    <RolePickerGrid
+                      roles={script.characters}
+                      selectedRoleId={player.shownRole}
+                      onPick={(id) => setShownRole(player.id, id)}
+                      filter={shownRoleFilter(player.behaviorMode)}
+                    />
+                  </>
+                )}
+
+              <div className="behavior-row">
+                <label>Shown alignment:</label>
+                <button
+                  className="toggle-pill"
+                  aria-pressed={player.shownAlignment === null}
+                  onClick={() => setShownAlignment(player.id, null)}
+                >
+                  auto ({effectiveAlignment})
+                </button>
+                <button
+                  className="toggle-pill"
+                  aria-pressed={player.shownAlignment === "good"}
+                  onClick={() => setShownAlignment(player.id, "good")}
+                >
+                  good
+                </button>
+                <button
+                  className="toggle-pill"
+                  aria-pressed={player.shownAlignment === "evil"}
+                  onClick={() => setShownAlignment(player.id, "evil")}
+                >
+                  evil
+                </button>
+              </div>
+            </section>
+          )}
+
+          {role && player.behaviorMode === "fake_demon_behavior" && (
+            <LunaticInfo
+              player={player}
+              roles={script.characters}
+              roleById={roleById}
+              otherPlayers={Object.values(game.players)
+                .filter((p) => p.id !== player.id)
+                .sort((a, b) => a.seat - b.seat)}
+              onSetBluffs={(b) => setBluffs(player.id, b)}
+              onSetFakeMinions={(ids) => setFakeMinions(player.id, ids)}
+            />
+          )}
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">Reminders</h3>
+            <div className="reminder-list">
+              {player.reminders.map((r, i) => (
+                <span key={`${r}-${i}`} className="reminder-tag">
+                  {r}
+                  <button onClick={() => removeReminder(i)} aria-label={`Remove ${r}`}>
+                    ×
+                  </button>
+                </span>
+              ))}
+              {player.reminders.length === 0 && (
+                <span className="behavior-help">none</span>
+              )}
+            </div>
+            <div className="reminder-add">
+              <input
+                className="input"
+                placeholder="Add reminder…"
+                value={reminderDraft}
+                onChange={(e) => setReminderDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") addReminder(reminderDraft);
+                }}
+              />
+              <button
+                className="btn btn-sm"
+                onClick={() => addReminder(reminderDraft)}
+                disabled={!reminderDraft.trim()}
+              >
+                add
+              </button>
+            </div>
+            <div className="reminder-presets">
+              {REMINDER_PRESETS.map((p) => (
+                <button
+                  key={p}
+                  className="reminder-preset"
+                  onClick={() => addReminder(p)}
+                >
+                  + {p}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">ST notes</h3>
+            <textarea
+              className="textarea"
+              value={player.stNotes}
+              onChange={(e) => setNotes(player.id, e.target.value)}
+              placeholder="Private notes for this seat…"
+            />
+          </section>
+
+          <section className="drawer-section">
+            <h3 className="drawer-section-title">Danger zone</h3>
+            <div className="drawer-row">
+              <button
+                className="btn btn-sm btn-danger"
+                onClick={() => {
+                  if (window.confirm(`Remove ${player.name}?`)) {
+                    removePlayer(player.id);
+                  }
+                }}
+              >
+                Remove player
+              </button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </>
+  );
+}
+
+const BLUFF_SLOT_COUNT = 3;
+
+type LunaticInfoProps = {
+  player: STPlayerRecord;
+  roles: RoleDef[];
+  roleById: Map<string, RoleDef>;
+  otherPlayers: STPlayerRecord[];
+  onSetBluffs: (bluffs: string[]) => void;
+  onSetFakeMinions: (ids: string[]) => void;
+};
+
+function LunaticInfo({
+  player,
+  roles,
+  roleById,
+  otherPlayers,
+  onSetBluffs,
+  onSetFakeMinions,
+}: LunaticInfoProps) {
+  const bluffs = player.privateInfo?.bluffs ?? [];
+  const fakeMinions = player.privateInfo?.fakeMinions ?? [];
+
+  const goodPool = roles.filter(
+    (r) => r.type === "townsfolk" || r.type === "outsider"
+  );
+
+  const removeBluff = (idx: number) => {
+    const next = bluffs.filter((_, i) => i !== idx);
+    onSetBluffs(next);
+  };
+
+  const addBluff = (id: string) => {
+    if (bluffs.includes(id)) return;
+    if (bluffs.length >= BLUFF_SLOT_COUNT) return;
+    onSetBluffs([...bluffs, id]);
+  };
+
+  const toggleMinion = (pid: string) => {
+    if (fakeMinions.includes(pid)) {
+      onSetFakeMinions(fakeMinions.filter((m) => m !== pid));
+    } else {
+      onSetFakeMinions([...fakeMinions, pid]);
+    }
+  };
+
+  return (
+    <section className="drawer-section">
+      <h3 className="drawer-section-title">Lunatic info (ST private)</h3>
+      <p className="behavior-help">
+        Pick the 3 fake demon-bluff characters this Lunatic was shown, and
+        which players they were told are their fellow minions.
+      </p>
+
+      <div className="behavior-row">
+        <label>Fake bluffs:</label>
+        <span className="label">
+          {bluffs.length} / {BLUFF_SLOT_COUNT}
+        </span>
+      </div>
+      <div className="bluff-slots">
+        {Array.from({ length: BLUFF_SLOT_COUNT }).map((_, i) => {
+          const id = bluffs[i];
+          const def = id ? roleById.get(id) : undefined;
+          return (
+            <div
+              key={i}
+              className={`bluff-slot ${def ? "filled" : "empty"}`}
+            >
+              {def ? (
+                <>
+                  <span className={`bluff-slot-name type-${def.type}`}>
+                    {def.name}
+                  </span>
+                  <button
+                    className="bluff-slot-clear"
+                    aria-label={`Remove bluff ${def.name}`}
+                    onClick={() => removeBluff(i)}
+                  >
+                    ×
+                  </button>
+                </>
+              ) : (
+                <span className="bluff-slot-empty">empty</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <RolePickerGrid
+        roles={goodPool}
+        selectedRoleId={null}
+        onPick={addBluff}
+        filter={(r) => !bluffs.includes(r.id)}
+      />
+
+      <div className="behavior-row">
+        <label>Fake minions:</label>
+        <span className="label">{fakeMinions.length} chosen</span>
+      </div>
+      {otherPlayers.length === 0 ? (
+        <p className="behavior-help">No other players to choose from.</p>
+      ) : (
+        <div className="fake-minion-list">
+          {otherPlayers.map((p) => (
+            <button
+              key={p.id}
+              className="toggle-pill"
+              aria-pressed={fakeMinions.includes(p.id)}
+              onClick={() => toggleMinion(p.id)}
+            >
+              {p.name}{" "}
+              <span className="label">seat {p.seat + 1}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

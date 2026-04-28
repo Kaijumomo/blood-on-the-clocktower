@@ -1,0 +1,42 @@
+{
+  "rules": {
+    "lobbies": {
+      "$code": {
+        "storytellerUid": {
+          ".read": "auth != null",
+          ".write": "auth != null && (!data.exists() || data.val() === auth.uid)",
+          ".validate": "newData.isString() && newData.val().length > 0"
+        },
+        "roster": {
+          ".read": "auth != null && root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid",
+          "$uid": {
+            ".read": "auth != null && (root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid || $uid === auth.uid)",
+            ".write": "auth != null && (root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid || ($uid === auth.uid && !data.exists()))",
+            ".validate": "newData.isString() && newData.val().length > 0"
+          }
+        },
+        "public": {
+          ".read": "auth != null && (root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid || root.child('lobbies').child($code).child('roster').child(auth.uid).exists())",
+          ".write": "auth != null && root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid"
+        },
+        "player": {
+          "$playerId": {
+            ".read": "auth != null && (root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid || root.child('lobbies').child($code).child('roster').child(auth.uid).val() === $playerId)",
+            ".write": "auth != null && root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid"
+          }
+        },
+        "presence": {
+          "$uid": {
+            ".read": "auth != null && (root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid || root.child('lobbies').child($code).child('roster').child(auth.uid).exists())",
+            ".write": "auth != null && $uid === auth.uid",
+            ".validate": "newData.hasChildren(['online', 'lastSeen'])"
+          }
+        },
+        "storyteller": {
+          ".read": "auth != null && root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid",
+          ".write": "auth != null && root.child('lobbies').child($code).child('storytellerUid').val() === auth.uid"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,187 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600;700&family=IM+Fell+English:ital@0;1&display=swap");
+
+:root {
+  /* Background */
+  --bg: #0a0804;
+  --bg-night: #090916;
+  --bg-day: #100802;
+  --surface: rgba(20, 16, 10, 0.6);
+  --surface-strong: rgba(28, 22, 14, 0.85);
+  --border: rgba(196, 158, 80, 0.18);
+  --border-strong: rgba(196, 158, 80, 0.4);
+
+  /* Text */
+  --text: #d8c9a4;
+  --text-dim: rgba(216, 201, 164, 0.65);
+  --text-faint: rgba(216, 201, 164, 0.4);
+
+  /* Accents */
+  --gold: #c4a050;
+  --gold-soft: #c4a882;
+  --gold-bright: #e0b96a;
+
+  /* Type colors */
+  --type-townsfolk: #4fc3f7;
+  --type-outsider: #81c784;
+  --type-minion: #ef5350;
+  --type-demon: #ff6d00;
+  --type-traveler: #ba68c8;
+  --type-fabled: #ffd54f;
+
+  /* Status colors */
+  --status-drunk: #c49030;
+  --status-poisoned: #5aaa62;
+  --status-protected: #4a9abe;
+  --status-dead: rgba(216, 201, 164, 0.25);
+
+  /* Layout */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+
+  /* Fonts */
+  --font-body: "IM Fell English", "Iowan Old Style", Georgia, serif;
+  --font-display: "Cormorant Garamond", "Iowan Old Style", Georgia, serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background:
+    radial-gradient(circle at 50% 50%, rgba(196, 158, 80, 0.04), transparent 60%),
+    var(--bg);
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(196, 158, 80, 0.25);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* Typography */
+.label {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-weight: 600;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--gold-soft);
+  margin: 0;
+}
+
+/* Buttons */
+.btn {
+  font-family: var(--font-body);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  background: transparent;
+  color: var(--gold-soft);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.btn:hover:not(:disabled) {
+  background: rgba(196, 158, 80, 0.08);
+  border-color: var(--gold);
+  color: var(--gold-bright);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-gold {
+  background: linear-gradient(180deg, rgba(196, 158, 80, 0.18), rgba(196, 158, 80, 0.05));
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
+.btn-gold:hover:not(:disabled) {
+  background: linear-gradient(180deg, rgba(196, 158, 80, 0.3), rgba(196, 158, 80, 0.1));
+}
+.btn-danger {
+  color: #e88;
+  border-color: rgba(232, 100, 100, 0.4);
+}
+.btn-danger:hover:not(:disabled) {
+  background: rgba(232, 100, 100, 0.08);
+  border-color: rgba(232, 100, 100, 0.7);
+}
+.btn-sm {
+  font-size: 12px;
+  padding: 4px 10px;
+}
+
+/* Inputs */
+.input,
+.textarea,
+.select {
+  font-family: var(--font-body);
+  font-size: 14px;
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input:focus,
+.textarea:focus,
+.select:focus {
+  border-color: var(--gold);
+}
+.textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+/* Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 14px;
+}
+
+/* Type-color helpers */
+.type-townsfolk { color: var(--type-townsfolk); }
+.type-outsider { color: var(--type-outsider); }
+.type-minion { color: var(--type-minion); }
+.type-demon { color: var(--type-demon); }
+.type-traveler { color: var(--type-traveler); }
+.type-fabled { color: var(--type-fabled); }

@@ -1,0 +1,200 @@
+import { useMemo, useState } from "react";
+import type { RoleDef, RoleType } from "@/stores/types";
+import { deriveAlignment } from "@/data/roleRegistry";
+
+const TYPES: RoleType[] = [
+  "townsfolk",
+  "outsider",
+  "minion",
+  "demon",
+  "traveler",
+  "fabled",
+];
+
+type AlmanacProps = {
+  title: string;
+  roles: RoleDef[];
+  onClose: () => void;
+};
+
+export function Almanac({ title, roles, onClose }: AlmanacProps) {
+  const [search, setSearch] = useState("");
+  const [activeTypes, setActiveTypes] = useState<Set<RoleType>>(new Set());
+  const [activeEditions, setActiveEditions] = useState<Set<string>>(new Set());
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const editions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of roles) if (r.edition) set.add(r.edition);
+    return Array.from(set).sort();
+  }, [roles]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return roles.filter((r) => {
+      if (activeTypes.size > 0 && !activeTypes.has(r.type)) return false;
+      if (activeEditions.size > 0) {
+        if (!r.edition || !activeEditions.has(r.edition)) return false;
+      }
+      if (q) {
+        const hay = `${r.name} ${r.id} ${r.ability ?? ""}`.toLowerCase();
+        if (!hay.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [roles, search, activeTypes, activeEditions]);
+
+  const toggleType = (t: RoleType) => {
+    setActiveTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(t)) next.delete(t);
+      else next.add(t);
+      return next;
+    });
+  };
+  const toggleEdition = (e: string) => {
+    setActiveEditions((prev) => {
+      const next = new Set(prev);
+      if (next.has(e)) next.delete(e);
+      else next.add(e);
+      return next;
+    });
+  };
+
+  return (
+    <>
+      <div className="dialog-backdrop" onClick={onClose} />
+      <div className="dialog dialog-lg" role="dialog" aria-label={title}>
+        <header className="dialog-header">
+          <h2 className="dialog-title">{title}</h2>
+          <button className="btn btn-sm" onClick={onClose} aria-label="Close">
+            ✕
+          </button>
+        </header>
+        <div className="dialog-toolbar">
+          <input
+            className="input almanac-search"
+            placeholder="Search by name, id, or ability…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            autoFocus
+          />
+          <div className="filter-chips" role="group" aria-label="Type filters">
+            {TYPES.map((t) => (
+              <button
+                key={t}
+                className="chip"
+                data-kind={t}
+                aria-pressed={activeTypes.has(t)}
+                onClick={() => toggleType(t)}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+          {editions.length > 1 && (
+            <div className="filter-chips" role="group" aria-label="Edition filters">
+              {editions.map((e) => (
+                <button
+                  key={e}
+                  className="chip chip-edition"
+                  aria-pressed={activeEditions.has(e)}
+                  onClick={() => toggleEdition(e)}
+                >
+                  {e}
+                </button>
+              ))}
+            </div>
+          )}
+          <span className="label almanac-count">{filtered.length} characters</span>
+        </div>
+        <div className="dialog-body">
+          {filtered.length === 0 ? (
+            <p className="behavior-help">No characters match.</p>
+          ) : (
+            <ul className="almanac-list">
+              {filtered.map((r) => (
+                <AlmanacCard
+                  key={`${r.edition ?? "x"}-${r.id}`}
+                  role={r}
+                  expanded={expandedId === r.id}
+                  onToggle={() =>
+                    setExpandedId((cur) => (cur === r.id ? null : r.id))
+                  }
+                />
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function AlmanacCard({
+  role,
+  expanded,
+  onToggle,
+}: {
+  role: RoleDef;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const alignment = deriveAlignment(role);
+  return (
+    <li className={`almanac-card ${expanded ? "expanded" : ""}`}>
+      <button className="almanac-summary" onClick={onToggle}>
+        <span className={`almanac-name type-${role.type}`}>{role.name}</span>
+        <span className="almanac-meta">
+          <span className="label">{role.type}</span>
+          {role.edition && <span className="label">{role.edition}</span>}
+          <span className="label">{alignment}</span>
+        </span>
+      </button>
+      {expanded && (
+        <div className="almanac-detail">
+          {role.ability && <p className="almanac-ability">{role.ability}</p>}
+          {role.flavor && <p className="almanac-flavor">{role.flavor}</p>}
+          <dl className="almanac-attrs">
+            {role.firstNight !== undefined && (
+              <>
+                <dt>First night</dt>
+                <dd>{role.firstNight}</dd>
+              </>
+            )}
+            {role.otherNight !== undefined && (
+              <>
+                <dt>Other nights</dt>
+                <dd>{role.otherNight}</dd>
+              </>
+            )}
+            {role.oncePerGame && (
+              <>
+                <dt>Cadence</dt>
+                <dd>once per game</dd>
+              </>
+            )}
+            {role.setup && (
+              <>
+                <dt>Setup</dt>
+                <dd>changes the bag</dd>
+              </>
+            )}
+          </dl>
+          {role.jinxes && role.jinxes.length > 0 && (
+            <div className="almanac-jinxes">
+              <span className="label">Jinxes</span>
+              <ul>
+                {role.jinxes.map((j, i) => (
+                  <li key={i}>
+                    <strong>{j.id}:</strong> {j.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
