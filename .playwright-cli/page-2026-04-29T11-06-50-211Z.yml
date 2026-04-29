@@ -1,0 +1,13 @@
+- generic [ref=e4]:
+  - heading "New Blood" [level=1] [ref=e5]
+  - paragraph [ref=e6]: A Storyteller-first digital grimoire for Blood on the Clocktower. Local only — your tablet, your table, your game.
+  - generic [ref=e7]:
+    - button "New game · Trouble Brewing" [ref=e9] [cursor=pointer]
+    - button "New game · Sects & Violets" [ref=e11] [cursor=pointer]
+    - button "New game · Bad Moon Rising" [ref=e13] [cursor=pointer]
+    - button "+ Import script…" [ref=e14] [cursor=pointer]
+    - button "Browse characters" [ref=e15] [cursor=pointer]
+    - button "Configure Firebase…" [ref=e16] [cursor=pointer]
+    - link "Join a lobby (player)" [ref=e17] [cursor=pointer]:
+      - /url: "?join="
+    - button "Open public display" [ref=e18] [cursor=pointer]
