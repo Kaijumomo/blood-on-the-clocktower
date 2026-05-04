@@ -7,7 +7,8 @@ export type RoleType =
   | "minion"
   | "demon"
   | "traveler"
-  | "fabled";
+  | "fabled"
+  | "loric";
 
 export type BehaviorMode =
   | "normal"
@@ -26,6 +27,7 @@ export type RoleDef = {
   ability?: string;
   flavor?: string;
   icon?: string;
+  iconUrl?: string;
   firstNight?: number;
   otherNight?: number;
   firstNightPrompt?: string;
@@ -92,6 +94,7 @@ export type StorytellerLobbyRecord = {
   day: number;
   bluffs: RoleId[];
   fabled: RoleId[];
+  lorics: RoleId[];
   notes: string;
   players: Record<PlayerId, STPlayerRecord>;
   seatOrder: PlayerId[];
@@ -127,6 +130,7 @@ export type PublicLobbyRecord = {
   seatOrder: PlayerId[];
   players: Record<PlayerId, PlayerPublicRecord>;
   fabled: RoleId[];
+  lorics: RoleId[];
   winner?: Alignment;
   /** Set to "ended" by endLobby() when the ST closes the game. */
   status?: "ended";

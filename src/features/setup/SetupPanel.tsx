@@ -2,6 +2,9 @@ import { useMemo } from "react";
 import { useStorytellerStore } from "@/stores/storytellerStore";
 import { analyzeBag, type SetupWarning } from "./setupAnalyzer";
 import { FABLED } from "@/data/fabled";
+import { LORICS } from "@/data/lorics";
+import { jinxesForScript } from "@/data/jinxes";
+import { lookupOfficialRole } from "@/data/officialRoles";
 import type { Script, StorytellerLobbyRecord } from "@/stores/types";
 
 type Props = {
@@ -36,6 +39,7 @@ function warningText(w: SetupWarning): string {
 
 export function SetupPanel({ game, script, onClose }: Props) {
   const setFabled = useStorytellerStore((s) => s.setFabled);
+  const setLorics = useStorytellerStore((s) => s.setLorics);
 
   const roleById = useMemo(
     () => new Map(script.characters.map((r) => [r.id, r])),
@@ -48,6 +52,7 @@ export function SetupPanel({ game, script, onClose }: Props) {
   );
 
   const selectedFabled = new Set(game.fabled);
+  const selectedLorics = new Set(game.lorics ?? []);
 
   const toggleFabled = (id: string) => {
     if (selectedFabled.has(id)) {
@@ -56,6 +61,28 @@ export function SetupPanel({ game, script, onClose }: Props) {
       setFabled([...game.fabled, id]);
     }
   };
+
+  const toggleLoric = (id: string) => {
+    const current = game.lorics ?? [];
+    if (selectedLorics.has(id)) {
+      setLorics(current.filter((l) => l !== id));
+    } else {
+      setLorics([...current, id]);
+    }
+  };
+
+  const activeJinxes = useMemo(() => {
+    const inPlayCharacters = new Set(
+      Object.values(game.players)
+        .map((p) => p.actualRole)
+        .filter(Boolean)
+    );
+    return jinxesForScript(script, [
+      ...(game.lorics ?? []),
+      ...(game.fabled ?? []),
+      ...inPlayCharacters,
+    ]);
+  }, [script, game.lorics, game.fabled, game.players]);
 
   const bagTypes = ["townsfolk", "outsider", "minion", "demon"] as const;
 
@@ -148,6 +175,50 @@ export function SetupPanel({ game, script, onClose }: Props) {
             ))}
           </div>
         </div>
+
+        {/* Loric picker */}
+        <div className="setup-section">
+          <div className="setup-section-title">Lorics</div>
+          <p className="behavior-help" style={{ margin: "0 0 6px" }}>
+            Storyteller-controlled. Not seated, never die.
+          </p>
+          <div className="loric-chips">
+            {LORICS.map((l) => (
+              <button
+                key={l.id}
+                className={`loric-chip${selectedLorics.has(l.id) ? " selected" : ""}`}
+                aria-pressed={selectedLorics.has(l.id)}
+                title={l.ability}
+                onClick={() => toggleLoric(l.id)}
+              >
+                {l.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Active jinxes */}
+        {activeJinxes.length > 0 && (
+          <div className="setup-section">
+            <div className="setup-section-title">Jinxes ({activeJinxes.length})</div>
+            <ul className="jinx-list">
+              {activeJinxes.map((j, i) => {
+                const a = lookupOfficialRole(j.a);
+                const b = j.b === "any" ? null : lookupOfficialRole(j.b);
+                return (
+                  <li key={i} className="jinx-item">
+                    <span className="jinx-pair">
+                      <strong>{a?.name ?? j.a}</strong>
+                      {" × "}
+                      <strong>{b ? b.name : "any"}</strong>
+                    </span>
+                    <span className="jinx-reason">{j.reason}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
       </div>
     </aside>
   );

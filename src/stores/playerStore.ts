@@ -16,6 +16,16 @@ export type PlayerStatus =
   | "ended"
   | "error";
 
+export type TownNoteTag = "good" | "evil" | "unsure" | null;
+export type TownNote = { text: string; tag: TownNoteTag };
+
+/**
+ * Town notes are private to the player's device. Keyed by `${code}:${seatId}`
+ * so notes don't leak across lobbies. Stored in localStorage; never written
+ * to Firebase.
+ */
+export type TownNoteMap = Record<string, TownNote>;
+
 export type PlayerStore = {
   code: string | null;
   uid: string | null;
@@ -27,6 +37,7 @@ export type PlayerStore = {
   publicLobby: PublicLobbyRecord | null;
   // UX flag — has the player tapped to reveal their sealed-card role yet?
   revealed: boolean;
+  townNotes: TownNoteMap;
 
   setStatus: (status: PlayerStatus, error?: string | null) => void;
   setSession: (s: { code: string; uid: string; requestedName: string }) => void;
@@ -34,10 +45,13 @@ export type PlayerStore = {
   setSelf: (self: PlayerSelfRecord | null) => void;
   setPublic: (p: PublicLobbyRecord | null) => void;
   setRevealed: (revealed: boolean) => void;
+  setTownNote: (code: string, seatId: string, note: TownNote | null) => void;
   /** Called when the live lobby ends. Clears session so localStorage is clean; sets status="ended". */
   setEnded: () => void;
   reset: () => void;
 };
+
+const noteKey = (code: string, seatId: string): string => `${code}:${seatId}`;
 
 export const usePlayerStore = create<PlayerStore>()(
   persist(
@@ -51,6 +65,7 @@ export const usePlayerStore = create<PlayerStore>()(
       self: null,
       publicLobby: null,
       revealed: false,
+      townNotes: {},
 
       setStatus: (status, error = null) => set({ status, error }),
       setSession: ({ code, uid, requestedName }) =>
@@ -59,6 +74,21 @@ export const usePlayerStore = create<PlayerStore>()(
       setSelf: (self) => set({ self }),
       setPublic: (publicLobby) => set({ publicLobby }),
       setRevealed: (revealed) => set({ revealed }),
+      setTownNote: (code, seatId, note) =>
+        set((s) => {
+          const k = noteKey(code, seatId);
+          const next = { ...s.townNotes };
+          // Treat empty text + null tag as deletion to keep storage tidy.
+          if (
+            note === null ||
+            (note.text.trim().length === 0 && note.tag === null)
+          ) {
+            delete next[k];
+          } else {
+            next[k] = { text: note.text, tag: note.tag };
+          }
+          return { townNotes: next };
+        }),
       setEnded: () =>
         set({
           // Clear session fields so localStorage no longer points at an ended
@@ -89,7 +119,7 @@ export const usePlayerStore = create<PlayerStore>()(
     }),
     {
       name: "new-blood-player",
-      version: 1,
+      version: 2,
       storage: createJSONStorage(() => localStorage),
       partialize: (s) => ({
         code: s.code,
@@ -97,6 +127,7 @@ export const usePlayerStore = create<PlayerStore>()(
         playerId: s.playerId,
         requestedName: s.requestedName,
         revealed: s.revealed,
+        townNotes: s.townNotes,
       }),
     }
   )

@@ -60,6 +60,7 @@ export function projectLobbyToPublic(
     seatOrder: [...st.seatOrder],
     players,
     fabled: [...st.fabled],
+    lorics: [...(st.lorics ?? [])],
   };
   return out;
 }

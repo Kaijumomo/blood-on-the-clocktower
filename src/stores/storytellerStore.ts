@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { BUILTIN_SCRIPTS, BUILTIN_SCRIPT_IDS } from "@/data/scripts";
 import { FABLED } from "@/data/fabled";
+import { LORICS } from "@/data/lorics";
 import { StorytellerStateSchema } from "./schemas";
 import type {
   Alignment,
@@ -96,6 +97,7 @@ export type StorytellerStore = {
   setFakeMinions: (id: PlayerId, playerIds: PlayerId[]) => void;
   setIsTraveler: (id: PlayerId, isTraveler: boolean) => void;
   setFabled: (fabled: RoleId[]) => void;
+  setLorics: (lorics: RoleId[]) => void;
 
   setAlive: (id: PlayerId, alive: boolean) => void;
   setGhostVote: (id: PlayerId, ghostVote: boolean) => void;
@@ -168,6 +170,16 @@ export function migrateStoreState(state: unknown, fromVersion: number): unknown 
       });
     }
   }
+  if (fromVersion < 4) {
+    if (s.game && !s.game.lorics) s.game.lorics = [];
+    if (s.undoStack) {
+      s.undoStack = s.undoStack.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        if (!e.lorics) e.lorics = [];
+        return e;
+      });
+    }
+  }
   const check = StorytellerStateSchema.safeParse(state);
   if (!check.success) {
     // eslint-disable-next-line no-console
@@ -201,6 +213,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
           day: 0,
           bluffs: [],
           fabled: [],
+          lorics: [],
           notes: "",
           players: {},
           seatOrder: [],
@@ -531,6 +544,17 @@ export const useStorytellerStore = create<StorytellerStore>()(
         });
       },
 
+      setLorics: (lorics) => {
+        const { game, undoStack } = get();
+        if (!game) return;
+        const validIds = new Set(LORICS.map((l) => l.id));
+        const deduped = [...new Set(lorics.filter((id) => validIds.has(id)))];
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: { ...game, lorics: deduped },
+        });
+      },
+
       setAlive: (id, alive) => {
         const { game, undoStack } = get();
         if (!game) return;
@@ -678,7 +702,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
     }),
     {
       name: "new-blood-st",
-      version: 3,
+      version: 4,
       storage: createJSONStorage(() => localStorage),
       migrate: migrateStoreState,
       partialize: (s) => ({

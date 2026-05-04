@@ -2,14 +2,18 @@ import type { RoleDef } from "@/stores/types";
 import { BUILTIN_SCRIPTS } from "./scripts";
 import { TRAVELERS } from "./travelers";
 import { FABLED } from "./fabled";
+import { LORICS } from "./lorics";
+import { EXPERIMENTAL_CHARACTERS } from "./scripts/experimental";
 
 const normalize = (id: string): string =>
   id.toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const allOfficial: RoleDef[] = [
   ...Object.values(BUILTIN_SCRIPTS).flatMap((s) => s.characters),
+  ...EXPERIMENTAL_CHARACTERS,
   ...TRAVELERS,
   ...FABLED,
+  ...LORICS,
 ];
 
 const byNormalized = new Map<string, RoleDef>();

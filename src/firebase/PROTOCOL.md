@@ -10,7 +10,10 @@ lobbies/{code}/
                             the lobby. Rules enforce write-once.
   roster                  — collection. ST-only read (.read scoped to ST).
   roster/{uid}            — string. TWO PHASES (see below). Read = ST or self.
-  presence/{uid}          — { online, lastSeen }. Self-write only.
+  presence/{uid}          — { online, lastSeen }. Self-write only. Player
+                            arms onDisconnect → online:false at connect time;
+                            ST subscribes to the parent path and merges with
+                            roster to derive playerId-keyed online flags.
   public/                 — town-view projection. ST writes; readable by ST or
                             anyone with a roster entry (incl. knock state).
   player/{playerId}       — per-player projection. ST writes; only the matching

@@ -6,7 +6,9 @@ import { usePublicLobby } from "@/firebase/publicSync";
 import { ringRadius, seatPosition, tokenSizeForCount } from "@/features/grimoire/layout";
 import type { RoomBackend } from "@/firebase/backend";
 import { PublicSeat } from "./PublicSeat";
-import { PHASE_LABEL, selectActiveFabled } from "./presenters";
+import { PHASE_LABEL, selectActiveFabled, selectActiveLorics } from "./presenters";
+import { activeJinxesFor } from "@/data/jinxes";
+import { lookupOfficialRole } from "@/data/officialRoles";
 
 type Props = { code: string };
 
@@ -93,6 +95,15 @@ export function PublicDisplayScreen({ code }: Props) {
   const tokenSize = tokenSizeForCount(playerCount);
   const radius = ringRadius(size, tokenSize);
   const fabled = selectActiveFabled(publicLobby);
+  const lorics = selectActiveLorics(publicLobby);
+  // Public display only knows the roles it sees publicly. Use fabled+lorics
+  // as the available id pool; jinxes that depend on hidden in-play characters
+  // simply won't fire here, which is acceptable — they're still surfaced on
+  // the storyteller view where the truth is known.
+  const jinxes = activeJinxesFor([
+    ...publicLobby.fabled,
+    ...(publicLobby.lorics ?? []),
+  ]);
 
   return (
     <div className="public-display" data-phase={publicLobby.phase}>
@@ -106,9 +117,20 @@ export function PublicDisplayScreen({ code }: Props) {
         )}
         {fabled.length > 0 && (
           <div className="public-display-fabled">
+            <span className="label">Fabled</span>
             {fabled.map((f) => (
               <span key={f.id} className="fabled-strip-item" title={f.ability}>
                 {f.name}
+              </span>
+            ))}
+          </div>
+        )}
+        {lorics.length > 0 && (
+          <div className="public-display-fabled">
+            <span className="label">Lorics</span>
+            {lorics.map((l) => (
+              <span key={l.id} className="loric-strip-item" title={l.ability}>
+                {l.name}
               </span>
             ))}
           </div>
@@ -139,6 +161,27 @@ export function PublicDisplayScreen({ code }: Props) {
           </div>
         )}
       </div>
+
+      {jinxes.length > 0 && (
+        <div className="public-display-jinxes">
+          <span className="label">Jinxes</span>
+          <ul>
+            {jinxes.map((j, i) => {
+              const a = lookupOfficialRole(j.a);
+              const b = j.b === "any" ? null : lookupOfficialRole(j.b);
+              return (
+                <li key={i}>
+                  <strong>{a?.name ?? j.a}</strong>
+                  {" × "}
+                  <strong>{b ? b.name : "any"}</strong>
+                  {" — "}
+                  {j.reason}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <footer className="public-display-footer">
         code <strong>{publicLobby.code}</strong> · public display · read-only

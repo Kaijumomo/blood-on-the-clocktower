@@ -9,6 +9,7 @@ import {
   get as rtdbGet,
   update as rtdbUpdate,
   onValue,
+  onDisconnect as rtdbOnDisconnect,
   runTransaction,
   type Database,
 } from "firebase/database";
@@ -99,5 +100,16 @@ export class FirebaseRoomBackend implements RoomBackend {
       cb(snap.exists() ? (snap.val() as Json) : undefined);
     });
     return off;
+  }
+
+  async onDisconnectSet(
+    path: string,
+    value: Json
+  ): Promise<() => Promise<void>> {
+    const od = rtdbOnDisconnect(ref(this.db, path));
+    await od.set(value as unknown as object);
+    return async () => {
+      await od.cancel();
+    };
   }
 }

@@ -132,4 +132,13 @@ export class MemoryRoomBackend implements RoomBackend {
       if (set!.size === 0) this.listeners.delete(path);
     };
   }
+
+  /**
+   * No-op in memory: there is no real "disconnect" event in tests.
+   * Returns a no-op cancel. Tests that need to assert disconnect-fire
+   * behaviour should call the returned cancel — or write directly to the path.
+   */
+  async onDisconnectSet(_path: string, _value: Json): Promise<() => Promise<void>> {
+    return async () => {};
+  }
 }

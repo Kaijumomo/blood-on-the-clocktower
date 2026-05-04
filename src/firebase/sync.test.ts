@@ -44,6 +44,7 @@ function makeLobby(): StorytellerLobbyRecord {
     day: 1,
     bluffs: ["chef", "washerwoman", "saint"],
     fabled: [],
+    lorics: [],
     notes: "ST private notes — never publish",
     seatOrder: ["p1", "p2", "p3"],
     nightProgress: {},

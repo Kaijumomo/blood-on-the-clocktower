@@ -11,6 +11,7 @@ function makePublic(over: Partial<PublicLobbyRecord> = {}): PublicLobbyRecord {
     seatOrder: [],
     players: {},
     fabled: [],
+    lorics: [],
     ...over,
   };
 }

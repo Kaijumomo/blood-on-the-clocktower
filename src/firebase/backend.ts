@@ -38,4 +38,17 @@ export interface RoomBackend {
 
   /** Subscribe to changes at `path`. Callback fires immediately with current value. */
   subscribe(path: string, cb: (value: Json | undefined) => void): Unsubscribe;
+
+  /**
+   * Arrange for `value` to be written at `path` when this client disconnects
+   * (browser tab closes, network drops, process crashes). Returns a cancel
+   * function — call it to disarm the on-disconnect write before disconnect.
+   *
+   * Required for presence/online tracking: the player arms `online: false`
+   * to fire when their socket dies, then writes `online: true` immediately so
+   * the storyteller sees them as present until they actually leave.
+   *
+   * MemoryRoomBackend implements this as a no-op (testing only).
+   */
+  onDisconnectSet(path: string, value: Json): Promise<() => Promise<void>>;
 }

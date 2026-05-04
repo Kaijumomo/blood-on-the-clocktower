@@ -4,8 +4,8 @@ import { TRAVELERS, getTraveler, listTravelers } from "./travelers";
 import { BUILTIN_SCRIPTS } from "./scripts";
 
 describe("TRAVELERS registry", () => {
-  it("contains 15 travelers (5 each across tb/snv/bmr)", () => {
-    expect(TRAVELERS).toHaveLength(15);
+  it("contains the base 15 travelers (5 each across tb/snv/bmr) plus experimentals", () => {
+    expect(TRAVELERS.length).toBeGreaterThanOrEqual(15);
     const byEdition = new Map<string, number>();
     for (const t of TRAVELERS) {
       byEdition.set(t.edition!, (byEdition.get(t.edition!) ?? 0) + 1);
@@ -13,6 +13,8 @@ describe("TRAVELERS registry", () => {
     expect(byEdition.get("tb")).toBe(5);
     expect(byEdition.get("snv")).toBe(5);
     expect(byEdition.get("bmr")).toBe(5);
+    // Experimental travellers may grow over time; just assert they exist.
+    expect(byEdition.get("experimental") ?? 0).toBeGreaterThan(0);
   });
 
   it("every traveler validates against RoleDefSchema", () => {

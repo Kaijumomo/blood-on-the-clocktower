@@ -7,6 +7,9 @@ import { NightOrderPanel } from "@/features/nightOrder/NightOrderPanel";
 import { SetupPanel } from "@/features/setup/SetupPanel";
 import { TRAVELERS } from "@/data/travelers";
 import { FABLED } from "@/data/fabled";
+import { LORICS } from "@/data/lorics";
+import { jinxesForScript } from "@/data/jinxes";
+import { lookupOfficialRole } from "@/data/officialRoles";
 import { connectFirebase } from "@/firebase/session";
 import { isFirebaseConfigured } from "@/firebase/config";
 import { createLobby, endLobby } from "@/firebase/lobby";
@@ -44,7 +47,21 @@ export function GameScreen() {
   const [nightPanelOpen, setNightPanelOpen] = useState(false);
   const [setupPanelOpen, setSetupPanelOpen] = useState(false);
   const [overflowMenuOpen, setOverflowMenuOpen] = useState(false);
+  const [copyToast, setCopyToast] = useState<string | null>(null);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({});
   const closeOverflow = () => setOverflowMenuOpen(false);
+
+  const copyLobbyCode = async () => {
+    if (!lobby) return;
+    try {
+      await navigator.clipboard.writeText(lobby.code);
+      setCopyToast("Copied lobby code");
+    } catch {
+      setCopyToast("Copy failed — select and copy manually");
+    }
+    window.setTimeout(() => setCopyToast(null), 1500);
+  };
 
   // Auto-open night panel whenever phase transitions to "night".
   useEffect(() => {
@@ -78,7 +95,10 @@ export function GameScreen() {
     };
   }, [lobby, backend]);
 
-  useStorytellerSync(backend, setSyncError);
+  useStorytellerSync(backend, setSyncError, (online) => {
+    setOnlineCount(Object.values(online).filter(Boolean).length);
+    setOnlineMap(online);
+  });
 
   const goLive = async () => {
     setGoLiveError(null);
@@ -99,13 +119,29 @@ export function GameScreen() {
   };
 
   const almanacRoles = useMemo(
-    () => [...(script?.characters ?? []), ...TRAVELERS, ...FABLED],
+    () => [...(script?.characters ?? []), ...TRAVELERS, ...FABLED, ...LORICS],
     [script]
   );
+
+  const activeJinxes = useMemo(() => {
+    if (!game || !script) return [];
+    const inPlay = new Set(
+      Object.values(game.players)
+        .map((p) => p.actualRole)
+        .filter(Boolean)
+    );
+    return jinxesForScript(script, [
+      ...(game.lorics ?? []),
+      ...(game.fabled ?? []),
+      ...inPlay,
+    ]);
+  }, [script, game]);
+  const [jinxPanelOpen, setJinxPanelOpen] = useState(false);
 
   if (!game) return null;
   const selected = selectedPlayerId ? game.players[selectedPlayerId] : null;
   const playerCount = game.seatOrder.length;
+  const aliveCount = Object.values(game.players).filter((p) => p.alive).length;
 
   const advanceLabel =
     game.phase === "setup"
@@ -129,15 +165,31 @@ export function GameScreen() {
           <span className="label">
             {playerCount} {playerCount === 1 ? "player" : "players"}
           </span>
+          {playerCount > 0 && (
+            <span className="label" title="Alive of total players">
+              {aliveCount}/{playerCount} alive
+            </span>
+          )}
+          {lobby && playerCount > 0 && (
+            <span className="label" title="Players online">
+              {onlineCount}/{playerCount} online
+            </span>
+          )}
           {lobby && !backend && (
             <span className="phase-pill" style={{ opacity: 0.6 }}>Connecting…</span>
           )}
           {lobby && backend && (
-            <span
-              className="lobby-pill"
-              title="Players join with this code"
-            >
+            <span className="lobby-pill" title="Players join with this code">
               code <strong>{lobby.code}</strong>
+              <button
+                type="button"
+                className="lobby-pill-copy"
+                onClick={copyLobbyCode}
+                aria-label="Copy lobby code"
+                title="Copy lobby code"
+              >
+                ⧉
+              </button>
             </span>
           )}
         </div>
@@ -237,17 +289,64 @@ export function GameScreen() {
         </div>
       </header>
 
-      {game.fabled.length > 0 && (
+      {(game.fabled.length > 0 || (game.lorics?.length ?? 0) > 0 || activeJinxes.length > 0) && (
         <div className="fabled-strip">
-          <span className="fabled-strip-label">Fabled</span>
-          {game.fabled.map((id) => {
-            const f = FABLED.find((x) => x.id === id);
-            return (
-              <span key={id} className="fabled-strip-item" title={f?.ability}>
-                {f?.name ?? id}
-              </span>
-            );
-          })}
+          {game.fabled.length > 0 && (
+            <>
+              <span className="fabled-strip-label">Fabled</span>
+              {game.fabled.map((id) => {
+                const f = FABLED.find((x) => x.id === id);
+                return (
+                  <span key={id} className="fabled-strip-item" title={f?.ability}>
+                    {f?.name ?? id}
+                  </span>
+                );
+              })}
+            </>
+          )}
+          {(game.lorics?.length ?? 0) > 0 && (
+            <>
+              <span className="fabled-strip-label">Lorics</span>
+              {(game.lorics ?? []).map((id) => {
+                const l = LORICS.find((x) => x.id === id);
+                return (
+                  <span key={id} className="loric-strip-item" title={l?.ability}>
+                    {l?.name ?? id}
+                  </span>
+                );
+              })}
+            </>
+          )}
+          {activeJinxes.length > 0 && (
+            <button
+              type="button"
+              className="jinx-strip-toggle"
+              onClick={() => setJinxPanelOpen((o) => !o)}
+              aria-expanded={jinxPanelOpen}
+            >
+              Jinxes ({activeJinxes.length}) {jinxPanelOpen ? "▾" : "▸"}
+            </button>
+          )}
+        </div>
+      )}
+      {jinxPanelOpen && activeJinxes.length > 0 && (
+        <div className="jinx-panel">
+          <ul className="jinx-list">
+            {activeJinxes.map((j, i) => {
+              const a = lookupOfficialRole(j.a);
+              const b = j.b === "any" ? null : lookupOfficialRole(j.b);
+              return (
+                <li key={i} className="jinx-item">
+                  <span className="jinx-pair">
+                    <strong>{a?.name ?? j.a}</strong>
+                    {" × "}
+                    <strong>{b ? b.name : "any"}</strong>
+                  </span>
+                  <span className="jinx-reason">{j.reason}</span>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 
@@ -266,7 +365,7 @@ export function GameScreen() {
             onClose={() => setNightPanelOpen(false)}
           />
         )}
-        <GrimoireCircle />
+        <GrimoireCircle online={onlineMap} />
       </div>
 
       {selected && <PlayerDrawer player={selected} />}
@@ -308,6 +407,11 @@ export function GameScreen() {
           >
             dismiss
           </button>
+        </div>
+      )}
+      {copyToast && (
+        <div className="toast" role="status">
+          {copyToast}
         </div>
       )}
     </div>

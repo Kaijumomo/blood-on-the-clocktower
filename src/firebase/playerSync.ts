@@ -5,6 +5,7 @@ import { useEffect } from "react";
 import { usePlayerStore } from "@/stores/playerStore";
 import { knockOnLobby } from "./lobby";
 import {
+  presencePath,
   publicPath,
   rosterEntryPath,
   playerPath,
@@ -12,6 +13,8 @@ import {
 import type { RoomBackend } from "./backend";
 import type { PlayerSelfRecord, PublicLobbyRecord } from "@/stores/types";
 import { friendlyFirebaseError } from "./errors";
+
+const HEARTBEAT_MS = 30_000;
 
 export async function joinLobby(
   backend: RoomBackend,
@@ -134,4 +137,66 @@ export function usePlayerSync(backend: RoomBackend | null) {
     });
     return () => { active = false; cleanup?.(); };
   }, [backend, code]);
+
+  // Presence: while seated, write presence/{uid} = { online: true, lastSeen }
+  // and arm an onDisconnect that flips us to offline when the socket dies.
+  // A heartbeat refreshes lastSeen so a stale-but-online entry can be
+  // detected by the storyteller if needed.
+  useEffect(() => {
+    if (!backend || !code || !uid) return;
+    let active = true;
+    let cancelDisconnect: (() => Promise<void>) | null = null;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
+
+    const path = presencePath(code, uid);
+    const writeOnline = () =>
+      backend.set(path, { online: true, lastSeen: Date.now() });
+
+    (async () => {
+      try {
+        // Arm offline-on-disconnect first, so a transient failure between
+        // the two writes doesn't leave a stale "online" entry.
+        cancelDisconnect = await backend.onDisconnectSet(path, {
+          online: false,
+          lastSeen: Date.now(),
+        });
+        if (!active) {
+          await cancelDisconnect();
+          cancelDisconnect = null;
+          return;
+        }
+        await writeOnline();
+        if (!active) return;
+        heartbeat = setInterval(() => {
+          writeOnline().catch(() => {
+            // Heartbeat failures are non-fatal — onDisconnect handles real drops.
+          });
+        }, HEARTBEAT_MS);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[presence]", e instanceof Error ? e.message : e);
+      }
+    })();
+
+    return () => {
+      active = false;
+      if (heartbeat) clearInterval(heartbeat);
+      // Disarm the disconnect write and explicitly mark offline. The order
+      // matters: cancel first so the disconnect doesn't race with the set.
+      (async () => {
+        if (cancelDisconnect) {
+          try {
+            await cancelDisconnect();
+          } catch {
+            // Cancel failure is harmless — onDisconnect just becomes a no-op.
+          }
+        }
+        try {
+          await backend.set(path, { online: false, lastSeen: Date.now() });
+        } catch {
+          // Network may already be gone — ignore.
+        }
+      })();
+    };
+  }, [backend, code, uid]);
 }

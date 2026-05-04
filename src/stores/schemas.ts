@@ -9,6 +9,7 @@ export const RoleTypeSchema = z.enum([
   "demon",
   "traveler",
   "fabled",
+  "loric",
 ]);
 
 export const BehaviorModeSchema = z.enum([
@@ -30,6 +31,7 @@ export const RoleDefSchema = z
     ability: z.string().optional(),
     flavor: z.string().optional(),
     icon: z.string().optional(),
+    iconUrl: z.string().optional(),
     firstNight: z.number().optional(),
     otherNight: z.number().optional(),
     firstNightPrompt: z.string().optional(),
@@ -119,6 +121,7 @@ export const StorytellerLobbyRecordSchema = z.object({
   day: z.number().int().nonnegative(),
   bluffs: z.array(z.string().min(1)).default([]),
   fabled: z.array(z.string().min(1)).default([]),
+  lorics: z.array(z.string().min(1)).default([]),
   notes: z.string(),
   players: z.record(z.string().min(1), STPlayerRecordSchema),
   seatOrder: z.array(z.string().min(1)),
@@ -133,6 +136,7 @@ export const PublicLobbyRecordSchema = z.object({
   seatOrder: z.array(z.string().min(1)),
   players: z.record(z.string().min(1), PlayerPublicRecordSchema),
   fabled: z.array(z.string().min(1)),
+  lorics: z.array(z.string().min(1)).default([]),
   winner: AlignmentSchema.optional(),
 });
 

@@ -216,6 +216,7 @@ describe("Lobby-level projections", () => {
       day: 1,
       bluffs: ["chef", "washerwoman", "saint"],
       fabled: [],
+      lorics: [],
       notes: "ST-only",
       seatOrder: ["p1", "p2", "p3"],
       nightProgress: {},

@@ -17,17 +17,41 @@ import { writeProjections } from "./sync";
 import type { OnlineMap } from "@/stores/projections";
 import { projectToSelf } from "@/stores/projections";
 import type { RoomBackend } from "./backend";
+import type { PlayerId } from "@/stores/types";
 
 const WRITE_DEBOUNCE_MS = 200;
 
+type PresenceEntry = { online?: boolean; lastSeen?: number };
+type PresenceMap = Record<string, PresenceEntry>; // keyed by uid
+type RosterMap = Record<string, string>; // uid → playerId
+
+function deriveOnlineMap(roster: RosterMap, presence: PresenceMap): OnlineMap {
+  const out: OnlineMap = {};
+  for (const [uid, value] of Object.entries(roster)) {
+    // value is either a name (knock) or playerId (seated). We only care about
+    // seated entries — only those have a stable id to map onto. Knocked
+    // players don't have a seat yet, so they don't appear in the public roster.
+    const playerId: PlayerId = value;
+    const p = presence[uid];
+    out[playerId] = !!p?.online;
+  }
+  return out;
+}
+
 export function useStorytellerSync(
   backend: RoomBackend | null,
-  onSyncError?: (msg: string | null) => void
+  onSyncError?: (msg: string | null) => void,
+  onPresenceUpdate?: (online: OnlineMap) => void
 ) {
   const lobby = useStorytellerStore((s) => s.lobby);
 
   const writeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingWrite = useRef<boolean>(false);
+
+  // Presence + roster snapshots — refs so they aren't part of the effect
+  // dependency array but are always read at flush time.
+  const rosterRef = useRef<RosterMap>({});
+  const presenceRef = useRef<PresenceMap>({});
 
   // ---- Sync loop: subscribe to store changes, debounce, project + write.
   useEffect(() => {
@@ -42,8 +66,7 @@ export function useStorytellerSync(
       const script = selectScriptById(state, game.scriptId);
       if (!script) return;
       const registry = buildRegistry(script);
-      // For 5b we don't yet read presence — pass an empty online map.
-      const online: OnlineMap = {};
+      const online = deriveOnlineMap(rosterRef.current, presenceRef.current);
       try {
         await writeProjections({ backend, code, stState: game, registry, online });
         // Clear any previous sync error banner on success.
@@ -79,8 +102,22 @@ export function useStorytellerSync(
       }
     });
 
+    // Watch presence for the lobby. When a uid's online flips, schedule a
+    // re-projection so the public roster carries the new value.
+    const unsubPresence = backend.subscribe(
+      `lobbies/${code}/presence`,
+      (value) => {
+        presenceRef.current = (value as PresenceMap | undefined) ?? {};
+        if (onPresenceUpdate) {
+          onPresenceUpdate(deriveOnlineMap(rosterRef.current, presenceRef.current));
+        }
+        schedule();
+      }
+    );
+
     return () => {
       unsubStore();
+      unsubPresence();
       if (writeTimer.current) {
         clearTimeout(writeTimer.current);
         writeTimer.current = null;
@@ -94,6 +131,19 @@ export function useStorytellerSync(
     const code = lobby.code;
 
     const unsub = watchRoster(backend, code, async (raw) => {
+      // Cache the roster for the presence merge — only seated entries (where
+      // value is a known playerId) get an OnlineMap entry.
+      const next: RosterMap = {};
+      const state0 = useStorytellerStore.getState();
+      const game0 = state0.game;
+      const knownIds0 = new Set(Object.keys(game0?.players ?? {}));
+      for (const [uid, value] of Object.entries(raw ?? {})) {
+        if (typeof value === "string" && knownIds0.has(value)) {
+          next[uid] = value;
+        }
+      }
+      rosterRef.current = next;
+
       const state = useStorytellerStore.getState();
       const game = state.game;
       if (!game) return;

@@ -1,5 +1,6 @@
 import type { Alignment, RoleDef, RoleId, Script } from "@/stores/types";
 import { TRAVELERS } from "@/data/travelers";
+import { LORICS } from "@/data/lorics";
 
 export type RoleRegistry = {
   get: (id: RoleId) => RoleDef | undefined;
@@ -17,6 +18,7 @@ export function deriveAlignment(role: RoleDef): Alignment {
       return "evil";
     case "traveler":
     case "fabled":
+    case "loric":
       return "good";
   }
 }
@@ -26,6 +28,7 @@ export function buildRegistry(script: Script): RoleRegistry {
   for (const r of script.characters) map.set(r.id, r);
   if (script.fabled) for (const r of script.fabled) map.set(r.id, r);
   for (const r of TRAVELERS) map.set(r.id, r);
+  for (const r of LORICS) map.set(r.id, r);
   return {
     get: (id) => map.get(id),
     alignmentOf: (id) => {

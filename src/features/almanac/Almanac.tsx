@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { RoleDef, RoleType } from "@/stores/types";
 import { deriveAlignment } from "@/data/roleRegistry";
+import { iconUrlFor } from "@/data/iconUrl";
 
 const TYPES: RoleType[] = [
   "townsfolk",
@@ -9,7 +10,19 @@ const TYPES: RoleType[] = [
   "demon",
   "traveler",
   "fabled",
+  "loric",
 ];
+
+function wikiUrlFor(name: string): string {
+  const slug = name
+    .trim()
+    .replace(/['']/g, "")
+    .replace(/[^A-Za-z0-9 _-]/g, "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join("_");
+  return `https://wiki.bloodontheclocktower.com/${slug}`;
+}
 
 type AlmanacProps = {
   title: string;
@@ -144,6 +157,15 @@ function AlmanacCard({
   return (
     <li className={`almanac-card ${expanded ? "expanded" : ""}`}>
       <button className="almanac-summary" onClick={onToggle}>
+        <img
+          className="almanac-art"
+          src={iconUrlFor(role)}
+          alt=""
+          loading="lazy"
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+          }}
+        />
         <span className={`almanac-name type-${role.type}`}>{role.name}</span>
         <span className="almanac-meta">
           <span className="label">{role.type}</span>
@@ -193,6 +215,14 @@ function AlmanacCard({
               </ul>
             </div>
           )}
+          <a
+            className="almanac-wiki"
+            href={wikiUrlFor(role.name)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Wiki ↗
+          </a>
         </div>
       )}
     </li>

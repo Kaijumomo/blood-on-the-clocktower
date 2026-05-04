@@ -18,6 +18,7 @@ const TYPE_ORDER: RoleType[] = [
   "demon",
   "traveler",
   "fabled",
+  "loric",
 ];
 
 const REMINDER_PRESETS = [
@@ -64,6 +65,7 @@ function groupByType(roles: RoleDef[]) {
     demon: [],
     traveler: [],
     fabled: [],
+    loric: [],
   };
   for (const r of roles) out[r.type].push(r);
   return out;
