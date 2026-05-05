@@ -56,9 +56,6 @@ export const TRAVELERS: RoleDef[] = [
   { id: "gnome", name: "Gnome", type: "traveler", edition: "experimental",
     ability: "Each night, choose a character: you learn how many players have that character.",
     flavor: '"Small foot, large ledger."' },
-  { id: "spiritofivory_t", name: "Spirit of Ivory (Traveler)", type: "traveler", edition: "experimental",
-    ability: "There can't be more than 1 extra evil player.",
-    flavor: '"Even the chess board has its limits."' },
 ];
 
 const byId = new Map<RoleId, RoleDef>();

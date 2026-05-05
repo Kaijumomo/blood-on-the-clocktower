@@ -39,6 +39,7 @@ function cdnUrlForRole(role: RoleDef): string {
   if (type === "loric") return `${base}loric/${id}.webp`;
 
   if (type === "traveler") {
+    if (edition === "experimental") return `${base}carousel/${id}_g.webp`;
     const ed = edition ?? "tb";
     return `${base}${ed}/${id}_g.webp`;
   }

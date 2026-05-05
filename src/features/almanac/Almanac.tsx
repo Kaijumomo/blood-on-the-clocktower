@@ -171,16 +171,18 @@ function AlmanacCard({
   return (
     <li className={`almanac-card ${expanded ? "expanded" : ""}`}>
       <button className="almanac-summary" onClick={onToggle}>
-        <img
-          className="almanac-art"
-          src={iconUrlFor(role)}
-          alt=""
-          loading="lazy"
-          onError={(e) => {
-            (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
-          }}
-        />
-        <span className={`almanac-name type-${role.type}`}>{role.name}</span>
+        <span className="almanac-summary-left">
+          <img
+            className="almanac-art"
+            src={iconUrlFor(role)}
+            alt=""
+            loading="lazy"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).style.visibility = "hidden";
+            }}
+          />
+          <span className={`almanac-name type-${role.type}`}>{role.name}</span>
+        </span>
         <span className="almanac-meta">
           <span className="label">{role.type}</span>
         </span>
@@ -189,44 +191,6 @@ function AlmanacCard({
         <div className="almanac-detail">
           {role.ability && <p className="almanac-ability">{role.ability}</p>}
           {role.flavor && <p className="almanac-flavor">{role.flavor}</p>}
-          <dl className="almanac-attrs">
-            {role.firstNight !== undefined && (
-              <>
-                <dt>First night</dt>
-                <dd>{role.firstNight}</dd>
-              </>
-            )}
-            {role.otherNight !== undefined && (
-              <>
-                <dt>Other nights</dt>
-                <dd>{role.otherNight}</dd>
-              </>
-            )}
-            {role.oncePerGame && (
-              <>
-                <dt>Cadence</dt>
-                <dd>once per game</dd>
-              </>
-            )}
-            {role.setup && (
-              <>
-                <dt>Setup</dt>
-                <dd>changes the bag</dd>
-              </>
-            )}
-          </dl>
-          {role.jinxes && role.jinxes.length > 0 && (
-            <div className="almanac-jinxes">
-              <span className="label">Jinxes</span>
-              <ul>
-                {role.jinxes.map((j, i) => (
-                  <li key={i}>
-                    <strong>{j.id}:</strong> {j.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
           <a
             className="almanac-wiki"
             href={wikiUrlFor(role.name)}
