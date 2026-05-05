@@ -13,6 +13,20 @@ const TYPES: RoleType[] = [
   "loric",
 ];
 
+const TYPE_ORDER: Partial<Record<RoleType, number>> = {
+  townsfolk: 0,
+  outsider: 1,
+  minion: 2,
+  demon: 3,
+  traveler: 4,
+  fabled: 5,
+  loric: 6,
+};
+
+// Editions shown as filter chips. "experimental" is intentionally excluded —
+// experimental characters appear within their own type groups.
+const VISIBLE_EDITIONS = new Set(["tb", "snv", "bmr"]);
+
 function wikiUrlFor(name: string): string {
   const slug = name
     .trim()
@@ -38,23 +52,25 @@ export function Almanac({ title, roles, onClose }: AlmanacProps) {
 
   const editions = useMemo(() => {
     const set = new Set<string>();
-    for (const r of roles) if (r.edition) set.add(r.edition);
+    for (const r of roles) if (r.edition && VISIBLE_EDITIONS.has(r.edition)) set.add(r.edition);
     return Array.from(set).sort();
   }, [roles]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return roles.filter((r) => {
-      if (activeTypes.size > 0 && !activeTypes.has(r.type)) return false;
-      if (activeEditions.size > 0) {
-        if (!r.edition || !activeEditions.has(r.edition)) return false;
-      }
-      if (q) {
-        const hay = `${r.name} ${r.id} ${r.ability ?? ""}`.toLowerCase();
-        if (!hay.includes(q)) return false;
-      }
-      return true;
-    });
+    return roles
+      .filter((r) => {
+        if (activeTypes.size > 0 && !activeTypes.has(r.type)) return false;
+        if (activeEditions.size > 0) {
+          if (!r.edition || !activeEditions.has(r.edition)) return false;
+        }
+        if (q) {
+          const hay = `${r.name} ${r.id} ${r.ability ?? ""}`.toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => (TYPE_ORDER[a.type] ?? 99) - (TYPE_ORDER[b.type] ?? 99));
   }, [roles, search, activeTypes, activeEditions]);
 
   const toggleType = (t: RoleType) => {

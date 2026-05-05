@@ -31,7 +31,7 @@ export function HomeScreen() {
 
   return (
     <div className="home">
-      <h1 className="home-title">New Blood</h1>
+      <h1 className="home-title">Ravenswood Bluff</h1>
       <p className="home-subtitle">
         A Storyteller-first digital grimoire for Blood on the Clocktower. Local
         only — your tablet, your table, your game.

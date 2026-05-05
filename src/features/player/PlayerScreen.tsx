@@ -95,7 +95,7 @@ export function PlayerScreen({ initialCode }: Props) {
   if (configOpen) {
     return (
       <div className="player">
-        <h1 className="home-title">New Blood</h1>
+        <h1 className="home-title">Ravenswood Bluff</h1>
         <p className="home-subtitle">Configure Firebase to join a lobby.</p>
         <FirebaseConfigDialog
           onClose={() => setConfigOpen(false)}

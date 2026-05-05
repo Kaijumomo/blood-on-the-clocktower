@@ -1,57 +1,112 @@
-// Lorics are a Storyteller-controlled character category that sit alongside
-// Fabled but follow different rules:
-//   - Not players. They have no seat, no token in the ring.
-//   - Cannot die. Do not lose abilities. No normal-player state machine.
-//   - Selected at setup (and may be added/removed mid-game).
-//   - Surfaced to the ST as persistent reminders.
-//   - Visible on the public display so players know which Lorics are active.
+// Official Loric roster from Blood on the Clocktower.
+// Lorics are Storyteller-controlled modifiers, not seated players:
+//   - No seat, no token in the ring.
+//   - Cannot die. Do not lose abilities.
+//   - Selected at setup; may be added/removed mid-game.
+//   - Surfaced as persistent reminders to the ST.
+//   - Visible on the public display so players know which are active.
 //
-// The list below is the starting roster — extend or replace by editing this
-// file. Entries follow the same RoleDef shape as Fabled so the Almanac and
-// public renderers can show them without special casing.
+// Token images: https://release.botc.app/resources/characters/loric/{id}.webp
 
 import type { RoleDef, RoleId } from "@/stores/types";
 
 export const LORICS: RoleDef[] = [
   {
-    id: "lor_oakheart",
-    name: "Oakheart",
+    id: "bigwig",
+    name: "Big Wig",
     type: "loric",
+    edition: "loric",
     ability:
-      "The town's old oak watches the proceedings. The Storyteller may, once per day, hint at a player's alignment through a small omen.",
-    flavor: '"The roots remember everything the leaves forget."',
+      "The Storyteller has a second token that can be placed on any player. That player counts as having an extra ability on top of their own.",
+    flavor: '"Everyone defers to the Big Wig."',
   },
   {
-    id: "lor_ravenherald",
-    name: "Raven Herald",
+    id: "bootlegger",
+    name: "Bootlegger",
     type: "loric",
+    edition: "loric",
     ability:
-      "A messenger of the dead. Each night, the Storyteller may reveal one dead player's character to all living players.",
-    flavor: '"The dead are not silent — only patient."',
+      "At the start of the game, the Storyteller secretly alters one rule of the game. All players are told what that rule is.",
+    flavor: '"The rules, like everything else, are negotiable."',
   },
   {
-    id: "lor_lanternwatch",
-    name: "Lantern Watch",
+    id: "gardener",
+    name: "Gardener",
     type: "loric",
+    edition: "loric",
     ability:
-      "While Lantern Watch is active, the town has soft light. The Storyteller may pause the day at will to remind players of the time.",
-    flavor: '"A lantern in the fog is a promise that someone is awake."',
+      "The Storyteller may choose which player receives each role, rather than dealing them randomly.",
+    flavor: '"Every seed planted with purpose."',
   },
   {
-    id: "lor_riverwarden",
-    name: "River Warden",
+    id: "godofug",
+    name: "God of Ug",
     type: "loric",
+    edition: "loric",
     ability:
-      "The river marks the town's edge. The Storyteller may, once per game, declare a public truce in which no nominations may occur for one day.",
-    flavor: '"Still water keeps its own counsel."',
+      "One Ug hat. When wearing the Ug hat, a player must speak one sound at a time but may vote twice. If they fail, pass the Ug hat.",
+    flavor: '"Ug smash. Ug vote twice."',
   },
   {
-    id: "lor_chronicler",
-    name: "Chronicler",
+    id: "hindu",
+    name: "Hindu",
     type: "loric",
+    edition: "loric",
     ability:
-      "The town's record-keeper. The Storyteller maintains a public list of the day's executions and the deaths each night.",
-    flavor: '"What is written cannot be unsaid."',
+      "Players may not say the names of characters in play. If they do, they may not vote tomorrow.",
+    flavor: '"Some names carry too much power."',
+  },
+  {
+    id: "knaves",
+    name: "Knaves",
+    type: "loric",
+    edition: "loric",
+    ability:
+      "There are 2 Storytellers: one lies and one tells the truth. Once per game, at dusk, they might switch.",
+    flavor: '"Two voices. One truth. One lie."',
+  },
+  {
+    id: "pope",
+    name: "Pope",
+    type: "loric",
+    edition: "loric",
+    ability: "Once per game, the Pope may declare a holy day. No execution occurs that day.",
+    flavor: '"His word was law. At least for one day."',
+  },
+  {
+    id: "stormcatcher",
+    name: "Storm Catcher",
+    type: "loric",
+    edition: "loric",
+    ability: "The first time a player would die each night, they do not. The Storyteller catches the storm.",
+    flavor: '"She stood between the town and the dark."',
+  },
+  {
+    id: "tor",
+    name: "Tor",
+    type: "loric",
+    edition: "loric",
+    ability:
+      "All players must use only one hand to gesture. If they use two hands, the Storyteller may give them false information.",
+    flavor: '"One hand. One truth. Two hands, and the stones remember."',
+  },
+  {
+    id: "ventriloquist",
+    name: "Ventriloquist",
+    type: "loric",
+    edition: "loric",
+    ability:
+      "Each day, the Storyteller privately tells one player something as if they were another character.",
+    flavor: '"The voice came from the puppet. Or so they thought."',
+  },
+  {
+    id: "zenomancer",
+    name: "Zenomancer",
+    type: "loric",
+    edition: "loric",
+    ability:
+      "Each night, the Storyteller may point at any number of players: they swap seats with a neighbor.",
+    flavor: '"The circle is never quite the same twice."',
   },
 ];
 
