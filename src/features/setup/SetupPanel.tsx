@@ -3,8 +3,6 @@ import { useStorytellerStore } from "@/stores/storytellerStore";
 import { analyzeBag, type SetupWarning } from "./setupAnalyzer";
 import { FABLED } from "@/data/fabled";
 import { LORICS } from "@/data/lorics";
-import { jinxesForScript } from "@/data/jinxes";
-import { lookupOfficialRole } from "@/data/officialRoles";
 import type { Script, StorytellerLobbyRecord } from "@/stores/types";
 
 type Props = {
@@ -70,19 +68,6 @@ export function SetupPanel({ game, script, onClose }: Props) {
       setLorics([...current, id]);
     }
   };
-
-  const activeJinxes = useMemo(() => {
-    const inPlayCharacters = new Set(
-      Object.values(game.players)
-        .map((p) => p.actualRole)
-        .filter(Boolean)
-    );
-    return jinxesForScript(script, [
-      ...(game.lorics ?? []),
-      ...(game.fabled ?? []),
-      ...inPlayCharacters,
-    ]);
-  }, [script, game.lorics, game.fabled, game.players]);
 
   const bagTypes = ["townsfolk", "outsider", "minion", "demon"] as const;
 
@@ -197,28 +182,6 @@ export function SetupPanel({ game, script, onClose }: Props) {
           </div>
         </div>
 
-        {/* Active jinxes */}
-        {activeJinxes.length > 0 && (
-          <div className="setup-section">
-            <div className="setup-section-title">Jinxes ({activeJinxes.length})</div>
-            <ul className="jinx-list">
-              {activeJinxes.map((j, i) => {
-                const a = lookupOfficialRole(j.a);
-                const b = j.b === "any" ? null : lookupOfficialRole(j.b);
-                return (
-                  <li key={i} className="jinx-item">
-                    <span className="jinx-pair">
-                      <strong>{a?.name ?? j.a}</strong>
-                      {" × "}
-                      <strong>{b ? b.name : "any"}</strong>
-                    </span>
-                    <span className="jinx-reason">{j.reason}</span>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
       </div>
     </aside>
   );

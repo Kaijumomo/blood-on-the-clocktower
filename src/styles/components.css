@@ -267,9 +267,14 @@
 .token-role {
   font-family: var(--font-display);
   font-weight: 600;
-  font-size: 12px;
-  line-height: 1.1;
+  font-size: 10px;
+  line-height: 1.2;
   letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 72px;
+  text-align: center;
 }
 .token-role.unassigned {
   color: var(--text-faint);

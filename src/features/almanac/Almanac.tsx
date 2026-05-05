@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import type { RoleDef, RoleType } from "@/stores/types";
-import { deriveAlignment } from "@/data/roleRegistry";
 import { iconUrlFor } from "@/data/iconUrl";
 
 const TYPES: RoleType[] = [
@@ -169,7 +168,6 @@ function AlmanacCard({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  const alignment = deriveAlignment(role);
   return (
     <li className={`almanac-card ${expanded ? "expanded" : ""}`}>
       <button className="almanac-summary" onClick={onToggle}>
@@ -185,8 +183,6 @@ function AlmanacCard({
         <span className={`almanac-name type-${role.type}`}>{role.name}</span>
         <span className="almanac-meta">
           <span className="label">{role.type}</span>
-          {role.edition && <span className="label">{role.edition}</span>}
-          <span className="label">{alignment}</span>
         </span>
       </button>
       {expanded && (

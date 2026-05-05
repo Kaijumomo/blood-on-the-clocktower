@@ -7,8 +7,6 @@ import { ringRadius, seatPosition, tokenSizeForCount } from "@/features/grimoire
 import type { RoomBackend } from "@/firebase/backend";
 import { PublicSeat } from "./PublicSeat";
 import { PHASE_LABEL, selectActiveFabled, selectActiveLorics } from "./presenters";
-import { activeJinxesFor } from "@/data/jinxes";
-import { lookupOfficialRole } from "@/data/officialRoles";
 
 type Props = { code: string };
 
@@ -100,11 +98,6 @@ export function PublicDisplayScreen({ code }: Props) {
   // as the available id pool; jinxes that depend on hidden in-play characters
   // simply won't fire here, which is acceptable — they're still surfaced on
   // the storyteller view where the truth is known.
-  const jinxes = activeJinxesFor([
-    ...publicLobby.fabled,
-    ...(publicLobby.lorics ?? []),
-  ]);
-
   return (
     <div className="public-display" data-phase={publicLobby.phase}>
       <header className="public-display-header">
@@ -161,27 +154,6 @@ export function PublicDisplayScreen({ code }: Props) {
           </div>
         )}
       </div>
-
-      {jinxes.length > 0 && (
-        <div className="public-display-jinxes">
-          <span className="label">Jinxes</span>
-          <ul>
-            {jinxes.map((j, i) => {
-              const a = lookupOfficialRole(j.a);
-              const b = j.b === "any" ? null : lookupOfficialRole(j.b);
-              return (
-                <li key={i}>
-                  <strong>{a?.name ?? j.a}</strong>
-                  {" × "}
-                  <strong>{b ? b.name : "any"}</strong>
-                  {" — "}
-                  {j.reason}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
 
       <footer className="public-display-footer">
         code <strong>{publicLobby.code}</strong> · public display · read-only

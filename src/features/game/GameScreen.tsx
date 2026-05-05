@@ -8,8 +8,6 @@ import { SetupPanel } from "@/features/setup/SetupPanel";
 import { TRAVELERS } from "@/data/travelers";
 import { FABLED } from "@/data/fabled";
 import { LORICS } from "@/data/lorics";
-import { jinxesForScript } from "@/data/jinxes";
-import { lookupOfficialRole } from "@/data/officialRoles";
 import { connectFirebase } from "@/firebase/session";
 import { isFirebaseConfigured } from "@/firebase/config";
 import { createLobby, endLobby } from "@/firebase/lobby";
@@ -122,21 +120,6 @@ export function GameScreen() {
     () => [...(script?.characters ?? []), ...TRAVELERS, ...FABLED, ...LORICS],
     [script]
   );
-
-  const activeJinxes = useMemo(() => {
-    if (!game || !script) return [];
-    const inPlay = new Set(
-      Object.values(game.players)
-        .map((p) => p.actualRole)
-        .filter(Boolean)
-    );
-    return jinxesForScript(script, [
-      ...(game.lorics ?? []),
-      ...(game.fabled ?? []),
-      ...inPlay,
-    ]);
-  }, [script, game]);
-  const [jinxPanelOpen, setJinxPanelOpen] = useState(false);
 
   if (!game) return null;
   const selected = selectedPlayerId ? game.players[selectedPlayerId] : null;
@@ -289,7 +272,7 @@ export function GameScreen() {
         </div>
       </header>
 
-      {(game.fabled.length > 0 || (game.lorics?.length ?? 0) > 0 || activeJinxes.length > 0) && (
+      {(game.fabled.length > 0 || (game.lorics?.length ?? 0) > 0) && (
         <div className="fabled-strip">
           {game.fabled.length > 0 && (
             <>
@@ -317,36 +300,6 @@ export function GameScreen() {
               })}
             </>
           )}
-          {activeJinxes.length > 0 && (
-            <button
-              type="button"
-              className="jinx-strip-toggle"
-              onClick={() => setJinxPanelOpen((o) => !o)}
-              aria-expanded={jinxPanelOpen}
-            >
-              Jinxes ({activeJinxes.length}) {jinxPanelOpen ? "▾" : "▸"}
-            </button>
-          )}
-        </div>
-      )}
-      {jinxPanelOpen && activeJinxes.length > 0 && (
-        <div className="jinx-panel">
-          <ul className="jinx-list">
-            {activeJinxes.map((j, i) => {
-              const a = lookupOfficialRole(j.a);
-              const b = j.b === "any" ? null : lookupOfficialRole(j.b);
-              return (
-                <li key={i} className="jinx-item">
-                  <span className="jinx-pair">
-                    <strong>{a?.name ?? j.a}</strong>
-                    {" × "}
-                    <strong>{b ? b.name : "any"}</strong>
-                  </span>
-                  <span className="jinx-reason">{j.reason}</span>
-                </li>
-              );
-            })}
-          </ul>
         </div>
       )}
 

@@ -20,7 +20,7 @@ function resolveIds(ids: string[]): ActiveRole[] {
 // Resolves the public lobby's fabled IDs to {id, name, ability} entries
 // using the same role lookup that covers travelers + fabled.
 export function selectActiveFabled(publicLobby: PublicLobbyRecord): ActiveRole[] {
-  return resolveIds(publicLobby.fabled);
+  return resolveIds(publicLobby.fabled ?? []);
 }
 
 export function selectActiveLorics(publicLobby: PublicLobbyRecord): ActiveRole[] {

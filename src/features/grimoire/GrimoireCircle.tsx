@@ -111,13 +111,6 @@ function Token({
             }}
           />
         ) : null}
-        {displayRole ? (
-          <div className={`token-role type-${displayRole.type}`}>
-            {displayRole.name}
-          </div>
-        ) : (
-          <div className="token-role unassigned">unassigned</div>
-        )}
         <div className="token-statuses">
           {STATUS_KINDS.filter((k) => player.statuses[k]).map((k) => (
             <span key={k} className="status-chip" data-kind={k} title={k}>
@@ -133,6 +126,13 @@ function Token({
           />
         )}
       </div>
+      {displayRole ? (
+        <div className={`token-role type-${displayRole.type}`}>
+          {displayRole.name}
+        </div>
+      ) : (
+        <div className="token-role unassigned">unassigned</div>
+      )}
       <div className="token-name">{player.name}</div>
       {!player.alive && (
         <div className="token-ghost">
