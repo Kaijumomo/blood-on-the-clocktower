@@ -1618,10 +1618,12 @@
 .public-display-fabled .fabled-strip-item,
 .public-display-fabled .loric-strip-item {
   font-size: clamp(14px, 2vmin, 26px);
-  padding: clamp(5px, 0.9vmin, 12px) clamp(12px, 1.8vmin, 24px);
+  line-height: 1.4;
+  padding: clamp(5px, 0.9vmin, 12px) clamp(14px, 2vmin, 28px);
   border-radius: 999px;
   border-width: 1px;
   border-style: solid;
+  box-sizing: border-box;
 }
 .public-display-fabled .fabled-strip-item {
   color: var(--type-fabled);
@@ -1791,15 +1793,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
-  margin-left: 8px;
+  vertical-align: middle;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 6px;
   border: 1px solid var(--border, #444);
   background: transparent;
   color: inherit;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 12px;
   line-height: 1;
 }
 .lobby-pill-copy:hover {
