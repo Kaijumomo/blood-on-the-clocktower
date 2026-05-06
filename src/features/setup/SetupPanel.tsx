@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useStorytellerStore } from "@/stores/storytellerStore";
-import { analyzeBag, type SetupWarning } from "./setupAnalyzer";
+import { analyzeBag, analyzeBagCore, type SetupWarning } from "./setupAnalyzer";
 import { FABLED } from "@/data/fabled";
 import { LORICS } from "@/data/lorics";
 import type { Script, StorytellerLobbyRecord } from "@/stores/types";
@@ -38,16 +38,37 @@ function warningText(w: SetupWarning): string {
 export function SetupPanel({ game, script, onClose }: Props) {
   const setFabled = useStorytellerStore((s) => s.setFabled);
   const setLorics = useStorytellerStore((s) => s.setLorics);
+  const dealRolePool = useStorytellerStore((s) => s.dealRolePool);
 
   const roleById = useMemo(
     () => new Map(script.characters.map((r) => [r.id, r])),
     [script.characters]
   );
 
-  const analysis = useMemo(
-    () => analyzeBag(game.players, roleById),
-    [game.players, roleById]
-  );
+  const pool = game.rolePool ?? [];
+  const hasPool = pool.length > 0;
+
+  const nonTravelerSeats = game.seatOrder.filter((id) => {
+    const p = game.players[id];
+    return p && !p.isTraveler;
+  });
+  const seatCount = nonTravelerSeats.length;
+  const poolReady = hasPool && pool.length === seatCount;
+  const poolMismatch = hasPool && pool.length !== seatCount;
+
+  // If there's a pool, analyse it. Otherwise fall back to the per-player analysis.
+  const analysis = useMemo(() => {
+    if (hasPool) {
+      return analyzeBagCore({
+        nonTravelerCount: seatCount,
+        travelerCount: game.seatOrder.filter((id) => game.players[id]?.isTraveler).length,
+        assignedRoleIds: pool,
+        unassignedCount: Math.max(0, seatCount - pool.length),
+        roleById,
+      });
+    }
+    return analyzeBag(game.players, roleById);
+  }, [hasPool, pool, seatCount, game.players, game.seatOrder, roleById]);
 
   const selectedFabled = new Set(game.fabled);
   const selectedLorics = new Set(game.lorics ?? []);
@@ -71,7 +92,6 @@ export function SetupPanel({ game, script, onClose }: Props) {
 
   const bagTypes = ["townsfolk", "outsider", "minion", "demon"] as const;
 
-  // Separate setup-role-in-play from other warnings.
   const setupNotes = analysis.warnings.filter(
     (w): w is Extract<SetupWarning, { kind: "setup-role-in-play" }> =>
       w.kind === "setup-role-in-play"
@@ -95,6 +115,40 @@ export function SetupPanel({ game, script, onClose }: Props) {
       </div>
 
       <div className="setup-panel-body">
+        {/* Role pool summary — shown when a pre-picked pool exists */}
+        {hasPool && (
+          <div className="setup-section setup-pool-section">
+            <div className="setup-section-title">Role pool</div>
+            <div className="setup-pool-meta">
+              {pool.length} roles · {seatCount} seats
+            </div>
+            {poolMismatch && (
+              <div className="setup-warning">
+                <span className="setup-warning-icon">⚠</span>
+                <span>
+                  Pool has {pool.length} role{pool.length !== 1 ? "s" : ""} but{" "}
+                  {seatCount} seat{seatCount !== 1 ? "s" : ""} are filled.
+                  {pool.length > seatCount
+                    ? " Remove some roles or add more players."
+                    : " Add more roles or remove a player."}
+                </span>
+              </div>
+            )}
+            <button
+              className="btn btn-gold setup-deal-btn"
+              disabled={!poolReady}
+              onClick={dealRolePool}
+              title={
+                poolReady
+                  ? "Shuffle the pool and deal one role to each seated player"
+                  : `Pool (${pool.length}) must match seated players (${seatCount})`
+              }
+            >
+              Start Game — Deal Roles
+            </button>
+          </div>
+        )}
+
         {/* Bag composition chips */}
         <div className="setup-bag-chips">
           {bagTypes.map((t) => {
@@ -181,7 +235,6 @@ export function SetupPanel({ game, script, onClose }: Props) {
             ))}
           </div>
         </div>
-
       </div>
     </aside>
   );

@@ -7,6 +7,7 @@ import { StorytellerStateSchema } from "./schemas";
 import type {
   Alignment,
   BehaviorMode,
+  GrimoireMode,
   NightStepRecord,
   NightStepStatus,
   PlayerId,
@@ -14,6 +15,7 @@ import type {
   Script,
   STPlayerRecord,
   StorytellerLobbyRecord,
+  TokenPosition,
 } from "./types";
 
 const UNDO_LIMIT = 20;
@@ -61,19 +63,30 @@ export type LobbyConnection = {
   status: "live" | "reconnecting";
 };
 
+export type NewGameOpts = {
+  plannedPlayerCount?: number;
+  plannedRoles?: RoleId[];
+  plannedFabled?: RoleId[];
+  plannedLorics?: RoleId[];
+};
+
 export type StorytellerStore = {
   game: StorytellerLobbyRecord | null;
-  view: "home" | "game";
+  view: "home" | "game" | "newgame";
   undoStack: StorytellerLobbyRecord[];
   selectedPlayerId: PlayerId | null;
   customScripts: Record<string, Script>;
   lobby: LobbyConnection | null;
   // ephemeral — knocks the ST has not yet processed
   pendingKnocks: { uid: string; name: string }[];
+  // grimoire layout (localStorage-only, never Firebase-synced)
+  grimoireMode: GrimoireMode;
+  tokenPositions: Record<PlayerId, TokenPosition>;
 
-  newGame: (scriptId: string) => void;
+  newGame: (scriptId: string, opts?: NewGameOpts) => void;
+  dealRolePool: () => void;
   endGame: () => void;
-  setView: (view: "home" | "game") => void;
+  setView: (view: "home" | "game" | "newgame") => void;
   selectPlayer: (id: PlayerId | null) => void;
   addCustomScript: (script: Script) => AddScriptResult;
   removeCustomScript: (id: string) => void;
@@ -114,6 +127,10 @@ export type StorytellerStore = {
   clearNightProgress: (day: number) => void;
 
   undo: () => void;
+
+  setGrimoireMode: (mode: GrimoireMode) => void;
+  setTokenPosition: (id: PlayerId, x: number, y: number) => void;
+  clearTokenPositions: () => void;
 };
 
 const pushUndo = (
@@ -180,6 +197,24 @@ export function migrateStoreState(state: unknown, fromVersion: number): unknown 
       });
     }
   }
+  if (fromVersion < 5) {
+    if (s.game) {
+      if (!s.game.rolePool) s.game.rolePool = [];
+      if (s.game.plannedPlayerCount === undefined) s.game.plannedPlayerCount = 0;
+    }
+    if (s.undoStack) {
+      s.undoStack = s.undoStack.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        if (!e.rolePool) e.rolePool = [];
+        if (e.plannedPlayerCount === undefined) e.plannedPlayerCount = 0;
+        return e;
+      });
+    }
+  }
+  // v6: grimoireMode and tokenPositions added — both are top-level optional
+  // fields with Zod defaults, so no data migration is needed; old persisted
+  // states pass validation and receive undefined → initial state provides "ring"/{}.
+
   const check = StorytellerStateSchema.safeParse(state);
   if (!check.success) {
     // eslint-disable-next-line no-console
@@ -200,8 +235,10 @@ export const useStorytellerStore = create<StorytellerStore>()(
       customScripts: {},
       lobby: null,
       pendingKnocks: [],
+      grimoireMode: "ring",
+      tokenPositions: {},
 
-      newGame: (scriptId: string) => {
+      newGame: (scriptId: string, opts: NewGameOpts = {}) => {
         const script =
           BUILTIN_SCRIPTS[scriptId] ?? get().customScripts[scriptId];
         if (!script) throw new Error(`Unknown script id: ${scriptId}`);
@@ -212,14 +249,63 @@ export const useStorytellerStore = create<StorytellerStore>()(
           phase: "setup",
           day: 0,
           bluffs: [],
-          fabled: [],
-          lorics: [],
+          fabled: opts.plannedFabled ?? [],
+          lorics: opts.plannedLorics ?? [],
           notes: "",
           players: {},
           seatOrder: [],
           nightProgress: {},
+          rolePool: opts.plannedRoles ?? [],
+          plannedPlayerCount: opts.plannedPlayerCount ?? 0,
         };
         set({ game, view: "game", undoStack: [], selectedPlayerId: null });
+      },
+
+      dealRolePool: () => {
+        const { game, undoStack } = get();
+        if (!game || game.phase !== "setup") return;
+        const pool = game.rolePool ?? [];
+        if (pool.length === 0) return;
+
+        const nonTravelerSeats = game.seatOrder.filter((id) => {
+          const p = game.players[id];
+          return p && !p.isTraveler;
+        });
+        if (pool.length !== nonTravelerSeats.length) return;
+
+        // Fisher-Yates shuffle
+        const shuffled = [...pool];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+        }
+
+        const newPlayers = { ...game.players };
+        nonTravelerSeats.forEach((playerId, idx) => {
+          const existing = newPlayers[playerId];
+          if (!existing) return;
+          const next: STPlayerRecord = {
+            ...existing,
+            actualRole: shuffled[idx]!,
+            shownRole: null,
+            shownAlignment: null,
+            behaviorMode: "normal",
+            abilityUsed: false,
+          };
+          delete next.privateInfo;
+          newPlayers[playerId] = next;
+        });
+
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: {
+            ...game,
+            players: newPlayers,
+            rolePool: [],
+            phase: "night",
+            day: 1,
+          },
+        });
       },
 
       endGame: () =>
@@ -699,10 +785,19 @@ export const useStorytellerStore = create<StorytellerStore>()(
           undoStack: undoStack.slice(0, -1),
         });
       },
+
+      setGrimoireMode: (mode) => set({ grimoireMode: mode }),
+
+      setTokenPosition: (id, x, y) =>
+        set((s) => ({
+          tokenPositions: { ...s.tokenPositions, [id]: { x, y } },
+        })),
+
+      clearTokenPositions: () => set({ tokenPositions: {} }),
     }),
     {
       name: "new-blood-st",
-      version: 4,
+      version: 6,
       storage: createJSONStorage(() => localStorage),
       migrate: migrateStoreState,
       partialize: (s) => ({
@@ -711,6 +806,8 @@ export const useStorytellerStore = create<StorytellerStore>()(
         undoStack: s.undoStack,
         customScripts: s.customScripts,
         lobby: s.lobby,
+        grimoireMode: s.grimoireMode,
+        tokenPositions: s.tokenPositions,
       }),
     }
   )

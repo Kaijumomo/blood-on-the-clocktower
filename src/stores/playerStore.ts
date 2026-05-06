@@ -4,7 +4,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { PlayerSelfRecord, PublicLobbyRecord } from "./types";
+import type { PlayerSelfRecord, PublicLobbyRecord, RoleId } from "./types";
 
 export type PlayerStatus =
   | "idle"
@@ -16,8 +16,13 @@ export type PlayerStatus =
   | "ended"
   | "error";
 
-export type TownNoteTag = "good" | "evil" | "unsure" | null;
-export type TownNote = { text: string; tag: TownNoteTag };
+export type TownNoteConfidence = "suspect" | "likely" | "confirm";
+
+export type TownNote = {
+  confidence: TownNoteConfidence | null;
+  roles: RoleId[];  // up to 3, from the active script
+  text: string;     // optional short note
+};
 
 /**
  * Town notes are private to the player's device. Keyed by `${code}:${seatId}`
@@ -53,6 +58,30 @@ export type PlayerStore = {
 
 const noteKey = (code: string, seatId: string): string => `${code}:${seatId}`;
 
+const isEmpty = (note: TownNote): boolean =>
+  note.confidence === null && note.roles.length === 0 && note.text.trim().length === 0;
+
+export function migratePlayerState(state: unknown, fromVersion: number): unknown {
+  const s = state as { townNotes?: Record<string, unknown> };
+  if (fromVersion < 3) {
+    // Convert old { text, tag } notes to new { confidence, roles, text } shape.
+    // Old "good"/"evil"/"unsure" tags have no direct mapping; drop them.
+    if (s.townNotes) {
+      const converted: Record<string, TownNote> = {};
+      for (const [k, v] of Object.entries(s.townNotes)) {
+        const old = v as { text?: string; tag?: unknown };
+        converted[k] = {
+          confidence: null,
+          roles: [],
+          text: old.text ?? "",
+        };
+      }
+      s.townNotes = converted;
+    }
+  }
+  return state;
+}
+
 export const usePlayerStore = create<PlayerStore>()(
   persist(
     (set) => ({
@@ -78,22 +107,19 @@ export const usePlayerStore = create<PlayerStore>()(
         set((s) => {
           const k = noteKey(code, seatId);
           const next = { ...s.townNotes };
-          // Treat empty text + null tag as deletion to keep storage tidy.
-          if (
-            note === null ||
-            (note.text.trim().length === 0 && note.tag === null)
-          ) {
+          if (note === null || isEmpty(note)) {
             delete next[k];
           } else {
-            next[k] = { text: note.text, tag: note.tag };
+            next[k] = {
+              confidence: note.confidence,
+              roles: note.roles.slice(0, 3),
+              text: note.text,
+            };
           }
           return { townNotes: next };
         }),
       setEnded: () =>
         set({
-          // Clear session fields so localStorage no longer points at an ended
-          // lobby. `status` is not persisted, so on next page load the player
-          // sees the fresh join form rather than re-entering "ended" state.
           code: null,
           uid: null,
           playerId: null,
@@ -119,8 +145,9 @@ export const usePlayerStore = create<PlayerStore>()(
     }),
     {
       name: "new-blood-player",
-      version: 2,
+      version: 3,
       storage: createJSONStorage(() => localStorage),
+      migrate: migratePlayerState,
       partialize: (s) => ({
         code: s.code,
         uid: s.uid,

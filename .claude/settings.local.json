@@ -12,7 +12,16 @@
       "mcp__Claude_Preview__preview_start",
       "Bash(node -e \"const s = require\\('./dist/assets/index-Bt02y_U0.js'\\); console.log\\('bundle loads'\\)\")",
       "Bash(npm audit *)",
-      "Bash(npx vitest *)"
+      "Bash(npx vitest *)",
+      "Skill(playwright-cli)",
+      "Bash(git -C 'C:/Users/Momo/Documents/New Blood App/.claude/worktrees/quizzical-roentgen-0d5ac5' diff HEAD)",
+      "Bash(git -C 'C:/Users/Momo/Documents/New Blood App/.claude/worktrees/quizzical-roentgen-0d5ac5' diff HEAD -- :!.gitignore)",
+      "Bash(grep -v \"\\\\.png$\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git worktree *)",
+      "Bash(echo \"exit: $?\")",
+      "mcp__Claude_in_Chrome__tabs_context_mcp"
     ]
   }
 }

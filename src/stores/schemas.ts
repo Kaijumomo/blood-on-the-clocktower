@@ -126,6 +126,8 @@ export const StorytellerLobbyRecordSchema = z.object({
   players: z.record(z.string().min(1), STPlayerRecordSchema),
   seatOrder: z.array(z.string().min(1)),
   nightProgress: z.record(z.string().min(1), NightStepRecordSchema).default({}),
+  rolePool: z.array(z.string().min(1)).default([]),
+  plannedPlayerCount: z.number().int().nonnegative().default(0),
 });
 
 export const PublicLobbyRecordSchema = z.object({
@@ -155,7 +157,7 @@ const StorytellerGamePersistedSchema = StorytellerLobbyRecordSchema.extend({
 
 export const StorytellerStateSchema = z.object({
   game: StorytellerGamePersistedSchema.nullable().optional(),
-  view: z.enum(["home", "game"]).optional(),
+  view: z.enum(["home", "game", "newgame"]).optional(),
   undoStack: z.array(StorytellerGamePersistedSchema).optional(),
   customScripts: z.record(z.string(), ScriptSchema).optional(),
   lobby: z
@@ -165,5 +167,9 @@ export const StorytellerStateSchema = z.object({
       status: z.enum(["live", "reconnecting"]),
     })
     .nullable()
+    .optional(),
+  grimoireMode: z.enum(["ring", "freeRoam"]).optional(),
+  tokenPositions: z
+    .record(z.object({ x: z.number(), y: z.number() }))
     .optional(),
 });

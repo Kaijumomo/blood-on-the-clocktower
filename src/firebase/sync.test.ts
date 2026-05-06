@@ -48,6 +48,8 @@ function makeLobby(): StorytellerLobbyRecord {
     notes: "ST private notes — never publish",
     seatOrder: ["p1", "p2", "p3"],
     nightProgress: {},
+    rolePool: [],
+    plannedPlayerCount: 0,
     players: {
       p1: makeSTPlayer({
         id: "p1",

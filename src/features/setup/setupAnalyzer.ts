@@ -35,20 +35,22 @@ const SETUP_SHIFTS: Record<
   godfather:   "godfather",
 };
 
-export function analyzeBag(
-  players: Record<PlayerId, STPlayerRecord>,
-  roleById: Map<RoleId, RoleDef>
-): BagAnalysis {
-  const all = Object.values(players);
-
-  const travelers = all.filter((p) => p.isTraveler);
-  const nonTravelers = all.filter((p) => !p.isTraveler);
-  const assigned = nonTravelers.filter((p) => p.actualRole !== "");
-  const unassigned = nonTravelers.filter((p) => p.actualRole === "");
+/**
+ * Core analysis — operates on raw role IDs.
+ * Both `analyzeBag` (players map) and `analyzeRolePool` (pre-pick) delegate here.
+ */
+export function analyzeBagCore(params: {
+  nonTravelerCount: number;
+  travelerCount: number;
+  assignedRoleIds: RoleId[];
+  unassignedCount: number;
+  roleById: Map<RoleId, RoleDef>;
+}): BagAnalysis {
+  const { nonTravelerCount, travelerCount, assignedRoleIds, unassignedCount, roleById } = params;
 
   const actual: BagCounts = { townsfolk: 0, outsider: 0, minion: 0, demon: 0 };
-  for (const p of assigned) {
-    const def = roleById.get(p.actualRole);
+  for (const roleId of assignedRoleIds) {
+    const def = roleById.get(roleId);
     if (!def) continue;
     if (def.type === "townsfolk") actual.townsfolk++;
     else if (def.type === "outsider") actual.outsider++;
@@ -57,11 +59,10 @@ export function analyzeBag(
   }
 
   const warnings: SetupWarning[] = [];
-  const nonTravelerCount = nonTravelers.length;
 
   // Emit setup-role-in-play notes for every setup:true role that is assigned.
-  for (const p of assigned) {
-    const def = roleById.get(p.actualRole);
+  for (const roleId of assignedRoleIds) {
+    const def = roleById.get(roleId);
     if (def?.setup && def.ability) {
       warnings.push({
         kind: "setup-role-in-play",
@@ -84,10 +85,10 @@ export function analyzeBag(
     warnings.push({ kind: "count-out-of-range", count: nonTravelerCount });
     return {
       nonTravelerCount,
-      travelerCount: travelers.length,
+      travelerCount,
       expected: null,
       actual,
-      unassignedCount: unassigned.length,
+      unassignedCount,
       warnings,
     };
   }
@@ -98,8 +99,8 @@ export function analyzeBag(
   let godfatherInPlay = false;
 
   // Apply fixed shifts.
-  for (const p of assigned) {
-    const shift = SETUP_SHIFTS[p.actualRole];
+  for (const roleId of assignedRoleIds) {
+    const shift = SETUP_SHIFTS[roleId];
     if (!shift) continue;
     if (shift === "godfather") {
       godfatherInPlay = true;
@@ -137,10 +138,30 @@ export function analyzeBag(
 
   return {
     nonTravelerCount,
-    travelerCount: travelers.length,
+    travelerCount,
     expected,
     actual,
-    unassignedCount: unassigned.length,
+    unassignedCount,
     warnings,
   };
+}
+
+export function analyzeBag(
+  players: Record<PlayerId, STPlayerRecord>,
+  roleById: Map<RoleId, RoleDef>
+): BagAnalysis {
+  const all = Object.values(players);
+
+  const travelers = all.filter((p) => p.isTraveler);
+  const nonTravelers = all.filter((p) => !p.isTraveler);
+  const assigned = nonTravelers.filter((p) => p.actualRole !== "");
+  const unassigned = nonTravelers.filter((p) => p.actualRole === "");
+
+  return analyzeBagCore({
+    nonTravelerCount: nonTravelers.length,
+    travelerCount: travelers.length,
+    assignedRoleIds: assigned.map((p) => p.actualRole),
+    unassignedCount: unassigned.length,
+    roleById,
+  });
 }

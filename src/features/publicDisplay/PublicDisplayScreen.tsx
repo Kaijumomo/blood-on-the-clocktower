@@ -90,7 +90,12 @@ export function PublicDisplayScreen({ code }: Props) {
   }
 
   const playerCount = publicLobby.seatOrder.length;
-  const tokenSize = tokenSizeForCount(playerCount);
+  // Scale token size with the container so the ring radius and visual size stay
+  // in sync. The CSS transform:scale was removed; scaling happens here instead.
+  const baseTokenSize = tokenSizeForCount(playerCount);
+  const tokenSize = Math.round(
+    Math.min(baseTokenSize * 2.4, Math.max(baseTokenSize, baseTokenSize * (size / 600)))
+  );
   const radius = ringRadius(size, tokenSize);
   const fabled = selectActiveFabled(publicLobby);
   const lorics = selectActiveLorics(publicLobby);

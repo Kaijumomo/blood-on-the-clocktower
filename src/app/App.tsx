@@ -3,6 +3,7 @@ import { useStorytellerStore } from "@/stores/storytellerStore";
 import { takeMigrationResetFlag } from "@/stores/storytellerStore";
 import { HomeScreen } from "@/features/home/HomeScreen";
 import { GameScreen } from "@/features/game/GameScreen";
+import { NewGameScreen } from "@/features/newgame/NewGameScreen";
 import { PlayerScreen } from "@/features/player/PlayerScreen";
 import { PublicDisplayScreen } from "@/features/publicDisplay/PublicDisplayScreen";
 import { isFirebaseConfigured } from "@/firebase/config";
@@ -67,7 +68,13 @@ export function App() {
           <button className="btn btn-sm" onClick={() => setMigrationResetBanner(false)}>dismiss</button>
         </div>
       )}
-      {view === "game" ? <GameScreen /> : <HomeScreen />}
+      {view === "game" ? (
+        <GameScreen />
+      ) : view === "newgame" ? (
+        <NewGameScreen />
+      ) : (
+        <HomeScreen />
+      )}
     </div>
   );
 }

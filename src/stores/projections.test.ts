@@ -220,6 +220,8 @@ describe("Lobby-level projections", () => {
       notes: "ST-only",
       seatOrder: ["p1", "p2", "p3"],
       nightProgress: {},
+      rolePool: [],
+      plannedPlayerCount: 0,
       players: {
         p1: makeSTPlayer({
           id: "p1",

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePlayerStore } from "@/stores/playerStore";
-import type { TownNote, TownNoteTag } from "@/stores/playerStore";
 import { connectFirebase } from "@/firebase/session";
 import { isFirebaseConfigured } from "@/firebase/config";
 import { joinLobby, usePlayerSync } from "@/firebase/playerSync";
@@ -9,8 +8,15 @@ import { friendlyFirebaseError } from "@/firebase/errors";
 import { FirebaseConfigDialog } from "@/features/firebase/FirebaseConfigDialog";
 import type { RoomBackend } from "@/firebase/backend";
 import { lookupOfficialRole } from "@/data/officialRoles";
+import { getBuiltinScript } from "@/data/scripts";
 import { iconUrlFor } from "@/data/iconUrl";
-import type { PlayerPublicRecord, PublicLobbyRecord } from "@/stores/types";
+import type { PublicLobbyRecord, RoleDef } from "@/stores/types";
+import { SeatNotePopup } from "./SeatNotePopup";
+import { SeatNotePreview } from "./SeatNotePreview";
+import { PlayerTabs } from "./PlayerTabs";
+import { AlmanacBody } from "@/features/almanac/AlmanacBody";
+
+type PlayerTab = "role" | "town" | "almanac";
 
 type Props = {
   initialCode?: string;
@@ -31,9 +37,8 @@ export function PlayerScreen({ initialCode }: Props) {
 
   const [backend, setBackend] = useState<RoomBackend | null>(null);
   const [configOpen, setConfigOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<PlayerTab>("role");
 
-  // On mount: connect to Firebase. If we have a saved session (code+uid),
-  // re-establish; otherwise wait for the join form.
   useEffect(() => {
     let mounted = true;
     if (!isFirebaseConfigured()) {
@@ -71,6 +76,37 @@ export function PlayerScreen({ initialCode }: Props) {
   }, []);
 
   usePlayerSync(backend);
+
+  // Script characters — used by Town note popup and Almanac tab.
+  const scriptCharacters = useMemo((): RoleDef[] => {
+    if (!publicLobby?.scriptId) return [];
+    return getBuiltinScript(publicLobby.scriptId)?.characters ?? [];
+  }, [publicLobby?.scriptId]);
+
+  // Almanac roles: script + active Fabled + active Lorics + seated Travelers.
+  const playerAlmanacRoles = useMemo((): RoleDef[] => {
+    if (!publicLobby) return scriptCharacters;
+    const roles: RoleDef[] = [...scriptCharacters];
+
+    for (const id of publicLobby.fabled ?? []) {
+      const r = lookupOfficialRole(id);
+      if (r) roles.push(r);
+    }
+    for (const id of publicLobby.lorics ?? []) {
+      const r = lookupOfficialRole(id);
+      if (r) roles.push(r);
+    }
+
+    const seenTravelerIds = new Set<string>();
+    for (const p of Object.values(publicLobby.players)) {
+      if (p.isTraveler && p.publicDisplayRole && !seenTravelerIds.has(p.publicDisplayRole)) {
+        const r = lookupOfficialRole(p.publicDisplayRole);
+        if (r) { roles.push(r); seenTravelerIds.add(p.publicDisplayRole); }
+      }
+    }
+
+    return roles;
+  }, [scriptCharacters, publicLobby]);
 
   const onJoinSubmit = async (joinCode: string, name: string) => {
     if (!backend) {
@@ -162,9 +198,7 @@ export function PlayerScreen({ initialCode }: Props) {
         </p>
         <button
           className="btn btn-sm btn-danger"
-          onClick={() => {
-            reset();
-          }}
+          onClick={() => { reset(); }}
         >
           Leave
         </button>
@@ -195,8 +229,32 @@ export function PlayerScreen({ initialCode }: Props) {
         <span className="label">Code {code}</span>
         <span className="label">{publicLobby?.phase ?? "—"}</span>
       </header>
-      <SealedCard self={self} revealed={revealed} onReveal={() => setRevealed(true)} />
-      <TownView publicLobby={publicLobby} ownPlayerId={playerId} code={code} />
+
+      <PlayerTabs active={activeTab} onChange={setActiveTab} />
+
+      {activeTab === "role" && (
+        <SealedCard
+          self={self}
+          revealed={revealed}
+          onReveal={() => setRevealed(true)}
+          onHide={() => setRevealed(false)}
+        />
+      )}
+
+      {activeTab === "town" && (
+        <TownView
+          publicLobby={publicLobby}
+          ownPlayerId={playerId}
+          code={code}
+          scriptCharacters={scriptCharacters}
+        />
+      )}
+
+      {activeTab === "almanac" && (
+        <div className="player-almanac-panel">
+          <AlmanacBody roles={playerAlmanacRoles} />
+        </div>
+      )}
     </div>
   );
 }
@@ -218,14 +276,8 @@ function PlayerJoinForm({
   const [formError, setFormError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!code.trim()) {
-      setFormError("Enter a lobby code.");
-      return;
-    }
-    if (!name.trim()) {
-      setFormError("Enter your name.");
-      return;
-    }
+    if (!code.trim()) { setFormError("Enter a lobby code."); return; }
+    if (!name.trim()) { setFormError("Enter your name."); return; }
     setFormError(null);
     setSubmitting(true);
     try {
@@ -272,11 +324,7 @@ function PlayerJoinForm({
           {formError}
         </p>
       )}
-      <button
-        className="btn btn-gold"
-        onClick={submit}
-        disabled={submitting}
-      >
+      <button className="btn btn-gold" onClick={submit} disabled={submitting}>
         {submitting ? "Knocking…" : "Knock to join"}
       </button>
     </div>
@@ -306,10 +354,12 @@ function SealedCard({
   self,
   revealed,
   onReveal,
+  onHide,
 }: {
   self: { shownRole: string; shownAlignment: "good" | "evil"; bluffs?: string[]; fakeMinions?: string[] } | null;
   revealed: boolean;
   onReveal: () => void;
+  onHide: () => void;
 }) {
   const [waitedLong, setWaitedLong] = useState(false);
   const [revealedBluffs, setRevealedBluffs] = useState<Set<number>>(new Set());
@@ -320,7 +370,6 @@ function SealedCard({
     return () => clearTimeout(t);
   }, [self]);
 
-  // Reset per-bluff reveal whenever the bluffs themselves change (new game).
   const bluffsKey = (self?.bluffs ?? []).join("|");
   useEffect(() => {
     setRevealedBluffs(new Set());
@@ -334,90 +383,98 @@ function SealedCard({
         </p>
         {waitedLong && (
           <p className="behavior-help" style={{ marginTop: 8, opacity: 0.7 }}>
-            Still waiting — the Storyteller may still be setting up. Check with them directly.
+            Still waiting — the Storyteller may still be setting up.
           </p>
         )}
       </div>
     );
   }
-  if (!revealed) {
-    return (
-      <button className="sealed-card sealed-card-button" onClick={onReveal}>
-        <span className="sealed-card-back">Tap to reveal your role</span>
-      </button>
-    );
-  }
+
   const role = lookupOfficialRole(self.shownRole);
   const roleName = role?.name ?? self.shownRole;
   const roleType = role?.type ?? "townsfolk";
+
   return (
-    <div className="sealed-card revealed">
-      <div className="sealed-card-art">
-        <img
-          src={iconUrlFor(role ?? self.shownRole)}
-          alt=""
-          loading="lazy"
-          onError={(e) => {
-            // Hide a broken image so the text below stays readable.
-            (e.currentTarget as HTMLImageElement).style.display = "none";
-          }}
-        />
-      </div>
-      <div className="sealed-card-name">
-        {roleName}
-        <span className={`label type-${roleType}`}>{roleType}</span>
-        <span className={`label alignment-${self.shownAlignment}`}>
-          {self.shownAlignment}
-        </span>
-      </div>
-      {role?.ability && <p className="sealed-card-ability">{role.ability}</p>}
-      {role?.flavor && <p className="sealed-card-flavor">{role.flavor}</p>}
-      <a
-        className="sealed-card-wiki"
-        href={wikiUrlFor(roleName)}
-        target="_blank"
-        rel="noopener noreferrer"
+    <div className="sealed-card-wrap">
+      <button
+        className={`sealed-card${revealed ? " revealed" : ""}`}
+        onClick={revealed ? onHide : onReveal}
+        aria-label={revealed ? "Tap to seal your role" : "Tap to reveal your role"}
       >
-        Wiki ↗
-      </a>
-      {self.bluffs && self.bluffs.length > 0 && (
-        <div className="sealed-card-bluffs">
-          <span className="label">
-            Demon bluffs — tap to reveal individually
-          </span>
-          <div className="bluff-reveal-grid">
-            {self.bluffs.map((b, i) => {
-              const r = lookupOfficialRole(b);
-              const open = revealedBluffs.has(i);
-              return (
-                <button
-                  key={`${i}-${b}`}
-                  type="button"
-                  className={`bluff-reveal-card ${open ? "revealed" : ""}`}
-                  onClick={() => {
-                    setRevealedBluffs((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(i)) next.delete(i);
-                      else next.add(i);
-                      return next;
-                    });
-                  }}
-                  aria-label={`Bluff ${i + 1}${open ? "" : " — tap to reveal"}`}
-                >
-                  {open ? (
-                    <span className="bluff-reveal-name">
-                      {r?.name ?? b}
-                    </span>
-                  ) : (
-                    <>
-                      <span className="bluff-reveal-q">?</span>
-                      <span className="bluff-reveal-hint">Bluff {i + 1}</span>
-                    </>
-                  )}
-                </button>
-              );
-            })}
-          </div>
+        {!revealed ? (
+          <span className="sealed-card-back">Tap to reveal your role</span>
+        ) : (
+          <>
+            <div className="sealed-card-art">
+              <img
+                src={iconUrlFor(role ?? self.shownRole)}
+                alt=""
+                loading="lazy"
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).style.display = "none";
+                }}
+              />
+            </div>
+            <div className="sealed-card-name">
+              {roleName}
+              <span className={`label type-${roleType}`}>{roleType}</span>
+              <span className={`label alignment-${self.shownAlignment}`}>
+                {self.shownAlignment}
+              </span>
+            </div>
+            {role?.ability && <p className="sealed-card-ability">{role.ability}</p>}
+            {role?.flavor && <p className="sealed-card-flavor">{role.flavor}</p>}
+            <span className="sealed-card-seal-hint">tap to seal</span>
+          </>
+        )}
+      </button>
+
+      {revealed && (
+        <div className="sealed-card-extras">
+          <a
+            className="sealed-card-wiki"
+            href={wikiUrlFor(roleName)}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Wiki ↗
+          </a>
+          {self.bluffs && self.bluffs.length > 0 && (
+            <div className="sealed-card-bluffs">
+              <span className="label">Demon bluffs — tap to reveal individually</span>
+              <div className="bluff-reveal-grid">
+                {self.bluffs.map((b, i) => {
+                  const r = lookupOfficialRole(b);
+                  const open = revealedBluffs.has(i);
+                  return (
+                    <button
+                      key={`${i}-${b}`}
+                      type="button"
+                      className={`bluff-reveal-card ${open ? "revealed" : ""}`}
+                      onClick={() => {
+                        setRevealedBluffs((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(i)) next.delete(i);
+                          else next.add(i);
+                          return next;
+                        });
+                      }}
+                      aria-label={`Bluff ${i + 1}${open ? "" : " — tap to reveal"}`}
+                    >
+                      {open ? (
+                        <span className="bluff-reveal-name">{r?.name ?? b}</span>
+                      ) : (
+                        <>
+                          <span className="bluff-reveal-q">?</span>
+                          <span className="bluff-reveal-hint">Bluff {i + 1}</span>
+                        </>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -425,50 +482,28 @@ function SealedCard({
 }
 
 // ---------------------------------------------------------------------------
-// Town view — roster, neighbour subtitles, online dot, per-seat private notes
+// Town view — roster, online dot, per-seat notes (no neighbour subtitles)
 // ---------------------------------------------------------------------------
-
-const TAG_LABEL: Record<Exclude<TownNoteTag, null>, string> = {
-  good: "good guess",
-  evil: "evil guess",
-  unsure: "unsure",
-};
-
-function aliveNeighbours(
-  publicLobby: PublicLobbyRecord,
-  seatId: string
-): { left: PlayerPublicRecord | null; right: PlayerPublicRecord | null } {
-  const order = publicLobby.seatOrder;
-  const idx = order.indexOf(seatId);
-  if (idx < 0) return { left: null, right: null };
-  const n = order.length;
-
-  const findAlive = (step: 1 | -1): PlayerPublicRecord | null => {
-    for (let i = 1; i < n; i++) {
-      const j = ((idx + step * i) % n + n) % n;
-      const targetId = order[j];
-      if (!targetId || targetId === seatId) continue;
-      const p = publicLobby.players[targetId];
-      if (p && p.alive) return p;
-    }
-    return null;
-  };
-
-  return { left: findAlive(-1), right: findAlive(1) };
-}
 
 function TownView({
   publicLobby,
   ownPlayerId,
   code,
+  scriptCharacters,
 }: {
   publicLobby: PublicLobbyRecord | null;
   ownPlayerId: string | null;
   code: string;
+  scriptCharacters: RoleDef[];
 }) {
   const townNotes = usePlayerStore((s) => s.townNotes);
   const setTownNote = usePlayerStore((s) => s.setTownNote);
-  const [editingSeat, setEditingSeat] = useState<string | null>(null);
+  const [noteTarget, setNoteTarget] = useState<string | null>(null);
+
+  const roleById = useMemo(
+    () => new Map(scriptCharacters.map((r) => [r.id, r])),
+    [scriptCharacters]
+  );
 
   const counts = useMemo(() => {
     if (!publicLobby) return { alive: 0, dead: 0, online: 0, total: 0 };
@@ -484,34 +519,13 @@ function TownView({
   }, [publicLobby]);
 
   if (!publicLobby) return null;
-  const activeFabled = publicLobby.fabled ?? [];
-  const activeLorics = publicLobby.lorics ?? [];
+
+  const noteTargetPlayer = noteTarget
+    ? publicLobby.players[noteTarget]
+    : null;
 
   return (
     <div className="town-view">
-      {(activeFabled.length > 0 || activeLorics.length > 0) && (
-        <div className="town-fabled">
-          {activeFabled.length > 0 && <span className="label">Fabled</span>}
-          {activeFabled.map((id) => {
-            const r = lookupOfficialRole(id);
-            return (
-              <span key={id} className="fabled-strip-item" title={r?.ability}>
-                {r?.name ?? id}
-              </span>
-            );
-          })}
-          {activeLorics.length > 0 && <span className="label">Lorics</span>}
-          {activeLorics.map((id) => {
-            const r = lookupOfficialRole(id);
-            return (
-              <span key={id} className="loric-strip-item" title={r?.ability}>
-                {r?.name ?? id}
-              </span>
-            );
-          })}
-        </div>
-      )}
-
       <div className="town-view-header">
         <h3 className="drawer-section-title" style={{ margin: 0 }}>Town</h3>
         <span className="label">{counts.alive}/{counts.total} alive</span>
@@ -523,25 +537,21 @@ function TownView({
           const p = publicLobby.players[id];
           if (!p) return null;
           const isYou = id === ownPlayerId;
-          const { left, right } = aliveNeighbours(publicLobby, id);
-          const noteKey = `${code}:${id}`;
-          const note = townNotes[noteKey];
-          const isEditing = editingSeat === id;
+          const nKey = `${code}:${id}`;
+          const note = townNotes[nKey] ?? null;
 
           return (
             <li
               key={id}
-              className={`town-row ${p.alive ? "" : "dead"} ${isYou ? "you" : ""} ${
-                note?.tag ? `note-tag-${note.tag}` : ""
-              }`}
+              className={`town-row ${p.alive ? "" : "dead"} ${isYou ? "you" : ""}`}
             >
               <button
                 type="button"
                 className="town-row-main"
                 onClick={() => {
-                  setEditingSeat((cur) => (cur === id ? null : id));
+                  if (!isYou) setNoteTarget(id);
                 }}
-                aria-expanded={isEditing}
+                aria-label={`${p.name} — tap to add notes`}
               >
                 <span className="label town-row-seat">seat {p.seat + 1}</span>
                 <span className="town-name">
@@ -555,100 +565,30 @@ function TownView({
                     aria-label={p.online ? "Online" : "Offline"}
                   />
                   <span className="label">{p.alive ? "alive" : "dead"}</span>
-                  {note?.tag && (
-                    <span className={`town-note-chip note-tag-${note.tag}`}>
-                      {TAG_LABEL[note.tag]}
-                    </span>
-                  )}
                 </span>
               </button>
-              <div className="town-row-neighbours">
-                ← {left ? left.name : "—"} · {right ? right.name : "—"} →
-              </div>
-              {note?.text && !isEditing && (
+              {note && (note.roles.length > 0 || note.confidence) && (
+                <SeatNotePreview note={note} roleById={roleById} />
+              )}
+              {note?.text && (
                 <p className="town-row-note">{note.text}</p>
-              )}
-              {isEditing && !isYou && (
-                <NoteEditor
-                  initial={note ?? { text: "", tag: null }}
-                  onSave={(next) => {
-                    setTownNote(code, id, next);
-                    setEditingSeat(null);
-                  }}
-                  onCancel={() => setEditingSeat(null)}
-                />
-              )}
-              {isEditing && isYou && (
-                <p className="behavior-help">
-                  Notes about your own seat aren't kept — that's just talking to yourself.
-                </p>
               )}
             </li>
           );
         })}
       </ul>
 
-      <div className="town-legend">
-        <span className="label note-tag-good">good guess</span>
-        <span className="label note-tag-evil">evil guess</span>
-        <span className="label note-tag-unsure">unsure</span>
-        <span className="label">tap a seat to add a private note</span>
-      </div>
-    </div>
-  );
-}
+      <p className="town-legend">Tap a seat to add private notes</p>
 
-function NoteEditor({
-  initial,
-  onSave,
-  onCancel,
-}: {
-  initial: TownNote;
-  onSave: (next: TownNote | null) => void;
-  onCancel: () => void;
-}) {
-  const [text, setText] = useState(initial.text);
-  const [tag, setTag] = useState<TownNoteTag>(initial.tag);
-
-  return (
-    <div className="town-note-editor">
-      <textarea
-        className="textarea"
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder="Private note about this seat…"
-        rows={2}
-      />
-      <div className="town-note-tags">
-        {(["good", "evil", "unsure"] as Exclude<TownNoteTag, null>[]).map((t) => (
-          <button
-            key={t}
-            type="button"
-            className={`toggle-pill note-tag-${t}`}
-            aria-pressed={tag === t}
-            onClick={() => setTag((cur) => (cur === t ? null : t))}
-          >
-            {TAG_LABEL[t]}
-          </button>
-        ))}
-        <button
-          type="button"
-          className="btn btn-sm btn-danger"
-          onClick={() => onSave(null)}
-        >
-          clear
-        </button>
-        <button type="button" className="btn btn-sm" onClick={onCancel}>
-          cancel
-        </button>
-        <button
-          type="button"
-          className="btn btn-sm btn-gold"
-          onClick={() => onSave({ text, tag })}
-        >
-          save
-        </button>
-      </div>
+      {noteTarget && noteTargetPlayer && (
+        <SeatNotePopup
+          playerName={noteTargetPlayer.name}
+          scriptCharacters={scriptCharacters}
+          note={townNotes[`${code}:${noteTarget}`] ?? null}
+          onSave={(next) => setTownNote(code, noteTarget, next)}
+          onClose={() => setNoteTarget(null)}
+        />
+      )}
     </div>
   );
 }

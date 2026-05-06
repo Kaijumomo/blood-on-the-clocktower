@@ -59,6 +59,9 @@ export type PrivateInfo = {
 
 export type Statuses = Record<string, boolean>;
 
+export type GrimoireMode = "ring" | "freeRoam";
+export type TokenPosition = { x: number; y: number };
+
 export type STPlayerRecord = {
   id: PlayerId;
   name: string;
@@ -100,6 +103,10 @@ export type StorytellerLobbyRecord = {
   seatOrder: PlayerId[];
   /** Keys: "${day}:${stepKey}" — e.g. "1:demonInfo", "2:p:abc123" */
   nightProgress: Record<string, NightStepRecord>;
+  /** Pre-picked roles waiting to be dealt. ST-only — never written to public/*. */
+  rolePool: RoleId[];
+  /** Target player count chosen at New Game setup time. */
+  plannedPlayerCount: number;
 };
 
 export type PlayerSelfRecord = {
