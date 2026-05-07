@@ -4,6 +4,8 @@ import { ringRadius, seatPosition, tokenSizeForCount } from "./layout";
 import { TRAVELERS } from "@/data/travelers";
 import { iconUrlFor } from "@/data/iconUrl";
 import type { GrimoireMode, PlayerId, RoleDef, Script, STPlayerRecord } from "@/stores/types";
+import { SeatAssignPopup } from "./SeatAssignPopup";
+import type { RoomBackend } from "@/firebase/backend";
 
 export function buildRoleDisplayMap(script: Script | undefined): Map<string, RoleDef> {
   const map = new Map((script?.characters ?? []).map((c) => [c.id, c]));
@@ -14,23 +16,9 @@ export function buildRoleDisplayMap(script: Script | undefined): Map<string, Rol
 const STATUS_KINDS = ["drunk", "poisoned", "protected"] as const;
 
 const STATUS_ICON: Record<typeof STATUS_KINDS[number], React.ReactNode> = {
-  drunk: (
-    <svg viewBox="0 0 16 16" fill="none" strokeLinecap="round" width="70%" height="70%" aria-hidden>
-      <path d="M8 2a6 6 0 1 0 6 6" stroke="white" strokeWidth="1.8" />
-      <path d="M8 5a3 3 0 1 0 3 3" stroke="white" strokeWidth="1.5" />
-      <circle cx="8" cy="8" r="1.2" fill="white" />
-    </svg>
-  ),
-  poisoned: (
-    <svg viewBox="0 0 16 16" fill="white" width="62%" height="62%" aria-hidden>
-      <path d="M8 2C8 2 3.5 8 3.5 11A4.5 4.5 0 0 0 12.5 11C12.5 8 8 2 8 2Z" />
-    </svg>
-  ),
-  protected: (
-    <svg viewBox="0 0 16 16" fill="white" width="68%" height="68%" aria-hidden>
-      <path d="M8 2L2.5 4.5V9.5C2.5 12.5 4.8 14.5 8 15.5C11.2 14.5 13.5 12.5 13.5 9.5V4.5L8 2Z" />
-    </svg>
-  ),
+  drunk:     <img src="/status/drunk.png"     alt="drunk"     width="100%" height="100%" />,
+  poisoned:  <img src="/status/poisoned.png"  alt="poisoned"  width="100%" height="100%" />,
+  protected: <img src="/status/protected.png" alt="protected" width="100%" height="100%" />,
 };
 
 const DRAG_MIME = "application/x-new-blood-seat";
@@ -191,11 +179,53 @@ function Token({
 // GrimoireCircle
 // ---------------------------------------------------------------------------
 
-type Props = {
-  online?: Record<string, boolean>;
+// ---------------------------------------------------------------------------
+// EmptySeat token
+// ---------------------------------------------------------------------------
+
+type EmptySeatProps = {
+  seatNumber: number;
+  size: number;
+  x: number;
+  y: number;
+  onClick: () => void;
 };
 
-export function GrimoireCircle({ online }: Props = {}) {
+function EmptySeat({ seatNumber, size, x, y, onClick }: EmptySeatProps) {
+  return (
+    <div
+      className="token empty-seat"
+      style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onClick(); }
+      }}
+      title={`Seat ${seatNumber} — click to assign a player`}
+    >
+      <div className="token-disc-frame" style={{ width: size, height: size }}>
+        <div className="token-disc empty-seat-disc">
+          <span className="empty-seat-icon">+</span>
+        </div>
+      </div>
+      <div className="token-role empty-seat-label">empty</div>
+      <div className="token-name empty-seat-num">Seat {seatNumber}</div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// GrimoireCircle
+// ---------------------------------------------------------------------------
+
+type Props = {
+  online?: Record<string, boolean>;
+  backend?: RoomBackend | null;
+  code?: string;
+};
+
+export function GrimoireCircle({ online, backend = null, code = "" }: Props = {}) {
   const game = useStorytellerStore((s) => s.game);
   const script = useStorytellerStore((s) =>
     game ? selectScriptById(s, game.scriptId) : undefined
@@ -217,6 +247,7 @@ export function GrimoireCircle({ online }: Props = {}) {
   const [ringDraggedId, setRingDraggedId] = useState<string | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const [ghostPos, setGhostPos] = useState<{ x: number; y: number } | null>(null);
+  const [assigningSeatId, setAssigningSeatId] = useState<PlayerId | null>(null);
 
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -376,6 +407,20 @@ export function GrimoireCircle({ online }: Props = {}) {
             if (!p) return null;
             const pos = getPos(id, i);
             const isDragging = drag?.id === id;
+
+            if (p.isEmpty) {
+              return (
+                <EmptySeat
+                  key={id}
+                  seatNumber={p.seat + 1}
+                  size={tokenSize}
+                  x={pos.x}
+                  y={pos.y}
+                  onClick={() => setAssigningSeatId(id)}
+                />
+              );
+            }
+
             return (
               <Token
                 key={id}
@@ -426,6 +471,20 @@ export function GrimoireCircle({ online }: Props = {}) {
 
       {/* Mode controls live outside the grimoire canvas so they never overlap tokens */}
       {modeControls}
+
+      {assigningSeatId && (() => {
+        const seat = game.players[assigningSeatId];
+        if (!seat) return null;
+        return (
+          <SeatAssignPopup
+            seatPlayerId={assigningSeatId}
+            seatNumber={seat.seat + 1}
+            backend={backend}
+            code={code}
+            onClose={() => setAssigningSeatId(null)}
+          />
+        );
+      })()}
     </div>
   );
 }

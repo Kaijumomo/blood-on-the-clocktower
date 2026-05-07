@@ -12,10 +12,21 @@ import {
 } from "./paths";
 import type { PlayerId, PlayerSelfRecord } from "@/stores/types";
 
-// Confusable-glyph-free alphabet (no 0/O, 1/I/L). 30 chars, ~810k 4-char codes.
+// Confusable-glyph-free alphabet (no 0/O, 1/I/L). 30 chars, ~656bn 8-char codes.
 const ALPHABET = "BCDFGHJKLMNPQRSTVWXYZ23456789";
 
-export function generateCode(length = 4): string {
+/** Format a raw 8-char code for display as "XXXX-XXXX". Shorter codes returned as-is. */
+export function formatCode(code: string): string {
+  if (code.length === 8) return `${code.slice(0, 4)}-${code.slice(4)}`;
+  return code;
+}
+
+/** Strip hyphens and uppercase — normalise user-typed codes before matching. */
+export function normaliseCode(raw: string): string {
+  return raw.replace(/-/g, "").toUpperCase().trim();
+}
+
+export function generateCode(length = 8): string {
   let out = "";
   const arr =
     typeof globalThis.crypto !== "undefined"

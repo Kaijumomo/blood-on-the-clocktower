@@ -98,7 +98,7 @@ export const usePlayerStore = create<PlayerStore>()(
 
       setStatus: (status, error = null) => set({ status, error }),
       setSession: ({ code, uid, requestedName }) =>
-        set({ code, uid, requestedName, error: null }),
+        set({ code, uid, requestedName, playerId: null, error: null }),
       setPlayerId: (id) => set({ playerId: id }),
       setSelf: (self) => set({ self }),
       setPublic: (publicLobby) => set({ publicLobby }),

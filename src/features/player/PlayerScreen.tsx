@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePlayerStore } from "@/stores/playerStore";
 import { connectFirebase } from "@/firebase/session";
-import { isFirebaseConfigured } from "@/firebase/config";
+import { isFirebaseConfigured, getConfigSource } from "@/firebase/config";
 import { joinLobby, usePlayerSync } from "@/firebase/playerSync";
-import { checkLobbyStatus } from "@/firebase/lobby";
+import { checkLobbyStatus, normaliseCode } from "@/firebase/lobby";
 import { friendlyFirebaseError } from "@/firebase/errors";
 import { FirebaseConfigDialog } from "@/features/firebase/FirebaseConfigDialog";
 import type { RoomBackend } from "@/firebase/backend";
@@ -42,7 +42,11 @@ export function PlayerScreen({ initialCode }: Props) {
   useEffect(() => {
     let mounted = true;
     if (!isFirebaseConfigured()) {
-      setConfigOpen(true);
+      if (getConfigSource() === "env") {
+        usePlayerStore.getState().setStatus("error", "Unable to connect — contact your Storyteller.");
+      } else {
+        setConfigOpen(true);
+      }
       return;
     }
     (async () => {
@@ -128,10 +132,10 @@ export function PlayerScreen({ initialCode }: Props) {
     }
   };
 
-  if (configOpen) {
+  if (configOpen && getConfigSource() !== "env") {
     return (
       <div className="player">
-        <h1 className="home-title">Ravenswood Bluff</h1>
+        <h1 className="home-title">Silverwick Hallow</h1>
         <p className="home-subtitle">Configure Firebase to join a lobby.</p>
         <FirebaseConfigDialog
           onClose={() => setConfigOpen(false)}
@@ -276,12 +280,13 @@ function PlayerJoinForm({
   const [formError, setFormError] = useState<string | null>(null);
 
   const submit = async () => {
-    if (!code.trim()) { setFormError("Enter a lobby code."); return; }
+    const normCode = normaliseCode(code);
+    if (!normCode) { setFormError("Enter a lobby code."); return; }
     if (!name.trim()) { setFormError("Enter your name."); return; }
     setFormError(null);
     setSubmitting(true);
     try {
-      await onSubmit(code, name);
+      await onSubmit(normCode, name);
     } finally {
       setSubmitting(false);
     }
@@ -298,13 +303,13 @@ function PlayerJoinForm({
         <input
           className="input"
           value={code}
-          onChange={(e) => { setCode(e.target.value); setFormError(null); }}
+          onChange={(e) => { setCode(e.target.value.toUpperCase()); setFormError(null); }}
           onKeyDown={handleKeyDown}
           autoCapitalize="characters"
           autoCorrect="off"
           spellCheck={false}
-          maxLength={8}
-          placeholder="ABCD"
+          maxLength={9}
+          placeholder="XXXX-XXXX"
         />
       </label>
       <label className="field">
@@ -315,7 +320,7 @@ function PlayerJoinForm({
           onChange={(e) => { setName(e.target.value); setFormError(null); }}
           onKeyDown={handleKeyDown}
           autoCapitalize="words"
-          maxLength={32}
+          maxLength={20}
           placeholder="Bob"
         />
       </label>

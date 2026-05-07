@@ -1,8 +1,13 @@
 // Firebase config resolution order:
-//   1. Vite env vars (VITE_FIREBASE_*) — primary path; copy .env.example to
-//      .env.local and fill in your Firebase project values.
-//   2. localStorage — fallback for users without dev access who paste config
-//      via the Configure dialog at runtime.
+//   1. Vite env vars (VITE_FIREBASE_*) — primary path for production.
+//      Local dev: copy .env.example → .env.local and fill in values.
+//      Cloudflare Pages: set these 7 vars in Settings → Environment Variables:
+//        VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN,
+//        VITE_FIREBASE_DATABASE_URL, VITE_FIREBASE_PROJECT_ID,
+//        VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_MESSAGING_SENDER_ID,
+//        VITE_FIREBASE_APP_ID
+//   2. localStorage — fallback for local dev without .env.local (config dialog).
+//      Not shown in production when env vars are present.
 // The apiKey is public by Firebase design; the auth boundary is the security
 // rules at src/firebase/rules.json. Do NOT put service account keys in env.
 

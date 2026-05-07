@@ -10,7 +10,7 @@ import { FABLED } from "@/data/fabled";
 import { LORICS } from "@/data/lorics";
 import { connectFirebase } from "@/firebase/session";
 import { isFirebaseConfigured } from "@/firebase/config";
-import { createLobby, endLobby } from "@/firebase/lobby";
+import { createLobby, endLobby, formatCode, normaliseCode } from "@/firebase/lobby";
 import { useStorytellerSync } from "@/firebase/storytellerSync";
 import { FirebaseConfigDialog } from "@/features/firebase/FirebaseConfigDialog";
 import { friendlyFirebaseError, type FriendlyError } from "@/firebase/errors";
@@ -48,12 +48,13 @@ export function GameScreen() {
   const [copyToast, setCopyToast] = useState<string | null>(null);
   const [onlineCount, setOnlineCount] = useState(0);
   const [onlineMap, setOnlineMap] = useState<Record<string, boolean>>({});
+  const [pendingOnlineCount, setPendingOnlineCount] = useState(0);
   const closeOverflow = () => setOverflowMenuOpen(false);
 
   const copyLobbyCode = async () => {
     if (!lobby) return;
     try {
-      await navigator.clipboard.writeText(lobby.code);
+      await navigator.clipboard.writeText(formatCode(lobby.code));
       setCopyToast("Copied lobby code");
     } catch {
       setCopyToast("Copy failed — select and copy manually");
@@ -93,9 +94,10 @@ export function GameScreen() {
     };
   }, [lobby, backend]);
 
-  useStorytellerSync(backend, setSyncError, (online) => {
+  useStorytellerSync(backend, setSyncError, (online, pendingCount) => {
     setOnlineCount(Object.values(online).filter(Boolean).length);
     setOnlineMap(online);
+    setPendingOnlineCount(pendingCount);
   });
 
   const goLive = async () => {
@@ -123,8 +125,10 @@ export function GameScreen() {
 
   if (!game) return null;
   const selected = selectedPlayerId ? game.players[selectedPlayerId] : null;
-  const playerCount = game.seatOrder.length;
-  const aliveCount = Object.values(game.players).filter((p) => p.alive).length;
+  const seatedPlayers = Object.values(game.players).filter((p) => !p.isEmpty);
+  const playerCount = seatedPlayers.length;
+  const aliveCount = seatedPlayers.filter((p) => p.alive).length;
+  const pendingQueueCount = Object.keys(game.pendingPlayers ?? {}).length;
 
   const advanceLabel =
     game.phase === "setup"
@@ -158,12 +162,22 @@ export function GameScreen() {
               {onlineCount}/{playerCount} online
             </span>
           )}
+          {pendingQueueCount > 0 && (
+            <span className="phase-pill" style={{ background: "rgba(196,158,80,0.18)", color: "var(--gold-bright)" }} title="Players in queue waiting to be assigned a seat">
+              {pendingQueueCount} in queue
+            </span>
+          )}
+          {lobby && pendingOnlineCount > 0 && (
+            <span className="label" title="Players connected but not yet seated">
+              {pendingOnlineCount} waiting
+            </span>
+          )}
           {lobby && !backend && (
             <span className="phase-pill" style={{ opacity: 0.6 }}>Connecting…</span>
           )}
           {lobby && backend && (
             <span className="lobby-pill" title="Players join with this code">
-              code <strong>{lobby.code}</strong>
+              code <strong>{formatCode(lobby.code)}</strong>
               <button
                 type="button"
                 className="lobby-pill-copy"
@@ -318,7 +332,7 @@ export function GameScreen() {
             onClose={() => setNightPanelOpen(false)}
           />
         )}
-        <GrimoireCircle online={onlineMap} />
+        <GrimoireCircle online={onlineMap} backend={backend} code={lobby?.code ?? ""} />
       </div>
 
       {selected && <PlayerDrawer player={selected} />}

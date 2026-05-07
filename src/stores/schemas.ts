@@ -128,6 +128,7 @@ export const StorytellerLobbyRecordSchema = z.object({
   nightProgress: z.record(z.string().min(1), NightStepRecordSchema).default({}),
   rolePool: z.array(z.string().min(1)).default([]),
   plannedPlayerCount: z.number().int().nonnegative().default(0),
+  pendingPlayers: z.record(z.string(), z.string()).default({}),
 });
 
 export const PublicLobbyRecordSchema = z.object({
@@ -144,15 +145,19 @@ export const PublicLobbyRecordSchema = z.object({
 
 // Looser variants for validating persisted (localStorage) state.
 // actualRole may be "" for un-assigned / traveler players.
+// name may be "" for pre-allocated empty seats.
 // code may be "" for offline (no-Firebase) games.
 const STPlayerRecordPersistedSchema = STPlayerRecordSchema.extend({
   actualRole: z.string(),
+  name: z.string(),
+  isEmpty: z.boolean().optional(),
 });
 
 const StorytellerGamePersistedSchema = StorytellerLobbyRecordSchema.extend({
   code: z.string(),
   storytellerUid: z.string(),
   players: z.record(z.string(), STPlayerRecordPersistedSchema),
+  pendingPlayers: z.record(z.string(), z.string()).default({}),
 });
 
 export const StorytellerStateSchema = z.object({

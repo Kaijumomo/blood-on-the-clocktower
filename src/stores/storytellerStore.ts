@@ -31,7 +31,7 @@ export function takeMigrationResetFlag(): boolean {
 const newId = (): PlayerId =>
   globalThis.crypto?.randomUUID?.() ?? `p-${Math.random().toString(36).slice(2, 10)}`;
 
-const blankPlayer = (id: PlayerId, name: string, seat: number): STPlayerRecord => ({
+const blankPlayer = (id: PlayerId, name: string, seat: number, isEmpty = false): STPlayerRecord => ({
   id,
   name,
   seat,
@@ -48,6 +48,7 @@ const blankPlayer = (id: PlayerId, name: string, seat: number): STPlayerRecord =
   reminders: [],
   stNotes: "",
   isTraveler: false,
+  isEmpty,
 });
 
 const clone = <T,>(v: T): T =>
@@ -95,6 +96,9 @@ export type StorytellerStore = {
   setPendingKnocks: (knocks: { uid: string; name: string }[]) => void;
   seatPlayerFromKnock: (uid: string, name: string) => PlayerId | null;
   bindRosterUid: (uid: string, playerId: PlayerId) => void;
+  addToPendingQueue: (uid: string, name: string) => void;
+  assignPendingToSeat: (uid: string, seatPlayerId: PlayerId) => boolean;
+  removePendingPlayer: (uid: string) => void;
 
   addPlayer: (name: string) => void;
   removePlayer: (id: PlayerId) => void;
@@ -215,6 +219,25 @@ export function migrateStoreState(state: unknown, fromVersion: number): unknown 
   // fields with Zod defaults, so no data migration is needed; old persisted
   // states pass validation and receive undefined → initial state provides "ring"/{}.
 
+  if (fromVersion < 7) {
+    if (s.game) {
+      if (!s.game.pendingPlayers) s.game.pendingPlayers = {};
+      const players = s.game.players as Record<string, Record<string, unknown>> | undefined;
+      if (players) {
+        for (const p of Object.values(players)) {
+          if (p.isEmpty === undefined) p.isEmpty = false;
+        }
+      }
+    }
+    if (s.undoStack) {
+      s.undoStack = s.undoStack.map((entry) => {
+        const e = entry as Record<string, unknown>;
+        if (!e.pendingPlayers) e.pendingPlayers = {};
+        return e;
+      });
+    }
+  }
+
   const check = StorytellerStateSchema.safeParse(state);
   if (!check.success) {
     // eslint-disable-next-line no-console
@@ -242,6 +265,14 @@ export const useStorytellerStore = create<StorytellerStore>()(
         const script =
           BUILTIN_SCRIPTS[scriptId] ?? get().customScripts[scriptId];
         if (!script) throw new Error(`Unknown script id: ${scriptId}`);
+        const count = opts.plannedPlayerCount ?? 0;
+        const prePlayers: Record<PlayerId, STPlayerRecord> = {};
+        const preSeatOrder: PlayerId[] = [];
+        for (let i = 0; i < count; i++) {
+          const id = newId();
+          prePlayers[id] = blankPlayer(id, "", i, true);
+          preSeatOrder.push(id);
+        }
         const game: StorytellerLobbyRecord = {
           code: "",
           storytellerUid: "local",
@@ -252,11 +283,12 @@ export const useStorytellerStore = create<StorytellerStore>()(
           fabled: opts.plannedFabled ?? [],
           lorics: opts.plannedLorics ?? [],
           notes: "",
-          players: {},
-          seatOrder: [],
+          players: prePlayers,
+          seatOrder: preSeatOrder,
           nightProgress: {},
           rolePool: opts.plannedRoles ?? [],
-          plannedPlayerCount: opts.plannedPlayerCount ?? 0,
+          plannedPlayerCount: count,
+          pendingPlayers: {},
         };
         set({ game, view: "game", undoStack: [], selectedPlayerId: null });
       },
@@ -269,7 +301,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
 
         const nonTravelerSeats = game.seatOrder.filter((id) => {
           const p = game.players[id];
-          return p && !p.isTraveler;
+          return p && !p.isTraveler && !p.isEmpty;
         });
         if (pool.length !== nonTravelerSeats.length) return;
 
@@ -332,27 +364,61 @@ export const useStorytellerStore = create<StorytellerStore>()(
 
       setPendingKnocks: (knocks) => set({ pendingKnocks: knocks }),
 
-      seatPlayerFromKnock: (_uid, name) => {
-        const { game } = get();
-        if (!game) return null;
-        const trimmed = name.trim();
-        if (!trimmed) return null;
-        const id = newId();
-        const seat = game.seatOrder.length;
-        const player = blankPlayer(id, trimmed, seat);
-        set({
-          game: {
-            ...game,
-            players: { ...game.players, [id]: player },
-            seatOrder: [...game.seatOrder, id],
-          },
-        });
-        return id;
+      seatPlayerFromKnock: (uid, name) => {
+        // Legacy path: used when there are no pre-allocated empty seats.
+        // Routes to pending queue; returns null since no seat is assigned yet.
+        get().addToPendingQueue(uid, name);
+        return null;
       },
 
       bindRosterUid: (_uid, _playerId) => {
         // No-op in local store. The actual roster→playerId binding lives
         // in the Firebase write done by the sync engine.
+      },
+
+      addToPendingQueue: (uid, name) => {
+        const { game } = get();
+        if (!game) return;
+        const trimmed = name.trim().slice(0, 20);
+        if (!trimmed) return;
+        if (game.pendingPlayers[uid]) return; // already queued
+        set({
+          game: {
+            ...game,
+            pendingPlayers: { ...game.pendingPlayers, [uid]: trimmed },
+          },
+        });
+      },
+
+      assignPendingToSeat: (uid, seatPlayerId) => {
+        const { game, undoStack } = get();
+        if (!game) return false;
+        const name = game.pendingPlayers[uid];
+        if (!name) return false;
+        const seat = game.players[seatPlayerId];
+        if (!seat?.isEmpty) return false;
+        const newPending = { ...game.pendingPlayers };
+        delete newPending[uid];
+        set({
+          undoStack: pushUndo(game, undoStack),
+          game: {
+            ...game,
+            players: {
+              ...game.players,
+              [seatPlayerId]: { ...seat, name, isEmpty: false },
+            },
+            pendingPlayers: newPending,
+          },
+        });
+        return true;
+      },
+
+      removePendingPlayer: (uid) => {
+        const { game } = get();
+        if (!game) return;
+        const newPending = { ...game.pendingPlayers };
+        delete newPending[uid];
+        set({ game: { ...game, pendingPlayers: newPending } });
       },
 
       addCustomScript: (script) => {
@@ -449,7 +515,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
       renamePlayer: (id, name) => {
         const { game, undoStack } = get();
         if (!game) return;
-        const trimmed = name.trim();
+        const trimmed = name.trim().slice(0, 20);
         if (!trimmed) return;
         set({
           undoStack: pushUndo(game, undoStack),
@@ -797,7 +863,7 @@ export const useStorytellerStore = create<StorytellerStore>()(
     }),
     {
       name: "new-blood-st",
-      version: 6,
+      version: 7,
       storage: createJSONStorage(() => localStorage),
       migrate: migrateStoreState,
       partialize: (s) => ({

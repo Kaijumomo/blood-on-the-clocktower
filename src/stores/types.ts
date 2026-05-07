@@ -80,6 +80,8 @@ export type STPlayerRecord = {
   stNotes: string;
   isTraveler: boolean;
   privateInfo?: PrivateInfo;
+  /** True for pre-allocated seats that haven't been assigned to a player yet. */
+  isEmpty?: boolean;
 };
 
 export type NightStepStatus = "pending" | "done" | "skipped";
@@ -107,6 +109,8 @@ export type StorytellerLobbyRecord = {
   rolePool: RoleId[];
   /** Target player count chosen at New Game setup time. */
   plannedPlayerCount: number;
+  /** Players who have knocked but not yet been assigned to a seat. uid → requested name. */
+  pendingPlayers: Record<string, string>;
 };
 
 export type PlayerSelfRecord = {

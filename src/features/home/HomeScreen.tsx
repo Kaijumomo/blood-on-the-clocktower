@@ -4,6 +4,7 @@ import { listOfficialRoles } from "@/data/officialRoles";
 import { Almanac } from "@/features/almanac/Almanac";
 import { FirebaseConfigDialog } from "@/features/firebase/FirebaseConfigDialog";
 import { getConfigSource } from "@/firebase/config";
+import { normaliseCode } from "@/firebase/lobby";
 
 export function HomeScreen() {
   const game = useStorytellerStore((s) => s.game);
@@ -37,10 +38,10 @@ export function HomeScreen() {
         </button>
       )}
 
-      <h1 className="home-title">Ravenswood Bluff</h1>
+      <h1 className="home-title">Silverwick Hallow</h1>
       <p className="home-subtitle">
-        A Storyteller-first digital grimoire for Blood on the Clocktower. Local
-        only — your tablet, your table, your game.
+        An unofficial table-side grimoire for in-person social deduction. Where
+        silver lanterns burn low, and every whisper leaves a mark.
       </p>
 
       <div className="home-actions">
@@ -66,7 +67,7 @@ export function HomeScreen() {
           className="btn"
           onClick={() => {
             const raw = window.prompt("Lobby code for public display?");
-            const code = raw?.trim().toUpperCase();
+            const code = raw ? normaliseCode(raw) : null;
             if (code) {
               window.location.search = `?display=public&code=${encodeURIComponent(code)}`;
             }

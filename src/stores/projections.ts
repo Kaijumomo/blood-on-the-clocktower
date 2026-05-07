@@ -50,6 +50,7 @@ export function projectLobbyToPublic(
   const players: Record<PlayerId, PlayerPublicRecord> = {};
   for (const id of Object.keys(st.players)) {
     const p = st.players[id]!;
+    if (p.isEmpty) continue; // don't expose unoccupied seats to players
     players[id] = projectToPublic(p, !!online[id]);
   }
   const out: PublicLobbyRecord = {
@@ -57,7 +58,7 @@ export function projectLobbyToPublic(
     scriptId: st.scriptId,
     phase: st.phase,
     day: st.day,
-    seatOrder: [...st.seatOrder],
+    seatOrder: st.seatOrder.filter((id) => !st.players[id]?.isEmpty),
     players,
     fabled: [...st.fabled],
     lorics: [...(st.lorics ?? [])],

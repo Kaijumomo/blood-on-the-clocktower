@@ -51,7 +51,9 @@ export async function writeProjections(ctx: WriteContext): Promise<void> {
   // Clean up stale projections for players whose role was cleared. Without
   // this, a player who was previously the Imp would keep reading "imp" from
   // their player/{id} path even after the ST blanked their role.
-  for (const playerId of Object.keys(stState.players)) {
+  // Skip isEmpty seats — they are never assigned a player path.
+  for (const [playerId, player] of Object.entries(stState.players)) {
+    if (player.isEmpty) continue;
     if (!(playerId in selfMap)) {
       updates[playerPath(code, playerId)] = null;
     }

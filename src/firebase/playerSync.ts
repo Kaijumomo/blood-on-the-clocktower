@@ -14,7 +14,7 @@ import type { RoomBackend } from "./backend";
 import type { PlayerSelfRecord, PublicLobbyRecord } from "@/stores/types";
 import { friendlyFirebaseError } from "./errors";
 
-const HEARTBEAT_MS = 30_000;
+const HEARTBEAT_MS = 15_000;
 
 export async function joinLobby(
   backend: RoomBackend,

@@ -12,10 +12,9 @@ import {
   useStorytellerStore,
 } from "@/stores/storytellerStore";
 import { buildRegistry } from "@/data/roleRegistry";
-import { classifyRoster, seatPlayer, watchRoster } from "./lobby";
+import { classifyRoster, watchRoster } from "./lobby";
 import { writeProjections } from "./sync";
 import type { OnlineMap } from "@/stores/projections";
-import { projectToSelf } from "@/stores/projections";
 import type { RoomBackend } from "./backend";
 import type { PlayerId } from "@/stores/types";
 
@@ -41,7 +40,7 @@ function deriveOnlineMap(roster: RosterMap, presence: PresenceMap): OnlineMap {
 export function useStorytellerSync(
   backend: RoomBackend | null,
   onSyncError?: (msg: string | null) => void,
-  onPresenceUpdate?: (online: OnlineMap) => void
+  onPresenceUpdate?: (online: OnlineMap, pendingOnlineCount: number) => void
 ) {
   const lobby = useStorytellerStore((s) => s.lobby);
 
@@ -109,7 +108,19 @@ export function useStorytellerSync(
       (value) => {
         presenceRef.current = (value as PresenceMap | undefined) ?? {};
         if (onPresenceUpdate) {
-          onPresenceUpdate(deriveOnlineMap(rosterRef.current, presenceRef.current));
+          const online = deriveOnlineMap(rosterRef.current, presenceRef.current);
+          // Count knocking uids (roster value is a name, not a playerId) that
+          // are currently showing presence online=true.
+          const seatedUids = new Set(Object.keys(rosterRef.current));
+          const fullRoster = useStorytellerStore.getState().game?.players ?? {};
+          const knownIds = new Set(Object.keys(fullRoster));
+          let pendingOnlineCount = 0;
+          for (const [uid, entry] of Object.entries(presenceRef.current)) {
+            if (!seatedUids.has(uid) && !knownIds.has(uid) && entry?.online) {
+              pendingOnlineCount++;
+            }
+          }
+          onPresenceUpdate(online, pendingOnlineCount);
         }
         schedule();
       }
@@ -125,12 +136,12 @@ export function useStorytellerSync(
     };
   }, [backend, lobby?.code]);
 
-  // ---- Roster watch: auto-seat knocks.
+  // ---- Roster watch: route new knocks to pending queue (ST assigns manually).
   useEffect(() => {
     if (!backend || !lobby) return;
     const code = lobby.code;
 
-    const unsub = watchRoster(backend, code, async (raw) => {
+    const unsub = watchRoster(backend, code, (raw) => {
       // Cache the roster for the presence merge — only seated entries (where
       // value is a known playerId) get an OnlineMap entry.
       const next: RosterMap = {};
@@ -150,55 +161,17 @@ export function useStorytellerSync(
       const knownIds = new Set(Object.keys(game.players));
       const entries = classifyRoster(raw, knownIds);
 
-      // Filter to genuine knocks: uid not yet bound to any player.
+      // Route genuine knocks to the pending queue; the ST will manually
+      // assign each pending player to an empty seat.
       const knocks = entries.filter((e) => e.phase === "knock");
-
-      // Auto-seat each knock. We do this serially to avoid colliding
-      // playerId allocations.
       for (const knock of knocks) {
-        // After a previous iteration this knock may already have been seated;
-        // re-read state.
-        const cur = useStorytellerStore.getState();
-        const curGame = cur.game;
-        if (!curGame) break;
-
-        // Skip if this uid is already bound.
-        const alreadyBound = entries.some(
+        // Skip if already in pending queue or already seated (re-connect).
+        if (game.pendingPlayers[knock.uid]) continue;
+        const alreadySeated = entries.some(
           (e) => e.uid === knock.uid && e.phase === "seated"
         );
-        if (alreadyBound) continue;
-
-        // Allocate a local player.
-        const playerId = useStorytellerStore
-          .getState()
-          .seatPlayerFromKnock(knock.uid, knock.name);
-        if (!playerId) continue;
-
-        // Compute the player's self projection and atomically write it +
-        // bind roster/{uid} → playerId.
-        const refreshed = useStorytellerStore.getState();
-        const game2 = refreshed.game;
-        if (!game2) break;
-        const player = game2.players[playerId];
-        if (!player) continue;
-        const script = selectScriptById(refreshed, game2.scriptId);
-        if (!script) continue;
-        const registry = buildRegistry(script);
-        // A freshly-seated knocker has no role yet — pass null so seatPlayer
-        // writes the roster binding only. The next writeProjections cycle
-        // will fill in player/{id} once the ST assigns a role.
-        const role = player.shownRole ?? player.actualRole;
-        const self = role ? projectToSelf(player, registry) : null;
-        try {
-          await seatPlayer(backend, code, knock.uid, playerId, self);
-        } catch (e) {
-          // eslint-disable-next-line no-console
-          console.warn("[sync] seatPlayer failed:", e instanceof Error ? e.message : e);
-          onSyncError?.(
-            `Couldn't seat "${knock.name}" — they may be stuck on "Waiting". ` +
-              "Check the console for details."
-          );
-        }
+        if (alreadySeated) continue;
+        useStorytellerStore.getState().addToPendingQueue(knock.uid, knock.name);
       }
     });
 

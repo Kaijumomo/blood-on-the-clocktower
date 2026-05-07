@@ -218,8 +218,9 @@ export function PlayerDrawer({ player }: { player: STPlayerRecord }) {
           <input
             className="drawer-name"
             value={nameDraft}
-            onChange={(e) => setNameDraft(e.target.value)}
+            onChange={(e) => setNameDraft(e.target.value.slice(0, 20))}
             onBlur={commitName}
+            maxLength={20}
             onKeyDown={(e) => {
               if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               if (e.key === "Escape") {
