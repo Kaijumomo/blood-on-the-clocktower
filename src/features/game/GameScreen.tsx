@@ -10,7 +10,7 @@ import { FABLED } from "@/data/fabled";
 import { LORICS } from "@/data/lorics";
 import { connectFirebase } from "@/firebase/session";
 import { isFirebaseConfigured } from "@/firebase/config";
-import { createLobby, endLobby, formatCode, normaliseCode } from "@/firebase/lobby";
+import { createLobby, endLobby, formatCode } from "@/firebase/lobby";
 import { useStorytellerSync } from "@/firebase/storytellerSync";
 import { FirebaseConfigDialog } from "@/features/firebase/FirebaseConfigDialog";
 import { friendlyFirebaseError, type FriendlyError } from "@/firebase/errors";

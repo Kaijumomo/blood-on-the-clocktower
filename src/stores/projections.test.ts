@@ -222,6 +222,7 @@ describe("Lobby-level projections", () => {
       nightProgress: {},
       rolePool: [],
       plannedPlayerCount: 0,
+      pendingPlayers: {},
       players: {
         p1: makeSTPlayer({
           id: "p1",
